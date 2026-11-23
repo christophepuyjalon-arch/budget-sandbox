@@ -7,6 +7,7 @@ import {
   lireSolde, lireOperations, convertir,
 } from './banque.js';
 import { appareilCourant, activer, creerInvitation, cookieSession, cookieEfface } from './acces.js';
+import { preparerBase } from './schema.js';
 
 const JOUR = 86400000;
 const HISTORIQUE_INITIAL = 365;  // jours importés à la première connexion (la banque peut en donner moins)
@@ -19,6 +20,7 @@ const jourISO = (t) => new Date(t).toISOString().slice(0, 10);
 export default {
   async fetch(req, env) {
     try {
+      await preparerBase(env);
       return await router(req, env);
     } catch (e) {
       console.log('erreur', e.stack || e.message);
@@ -26,7 +28,7 @@ export default {
     }
   },
   async scheduled(_evt, env, ctx) {
-    ctx.waitUntil(synchroniser(env, null));
+    ctx.waitUntil(preparerBase(env).then(() => synchroniser(env, null)));
   },
 };
 

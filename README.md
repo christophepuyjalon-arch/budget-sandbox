@@ -12,7 +12,7 @@ Comme pour Forme, un petit serveur gratuit chez Cloudflare garde tes clés secr�
 src/index.js       le serveur : routes, synchronisation, données pour l’app
 src/banque.js      le dialogue avec Enable Banking (signature, comptes, opérations)
 src/acces.js       qui a le droit d’ouvrir l’app (activation, invitations)
-migrations/        la structure de la base de données
+src/schema.js      la structure de la base de données (créée automatiquement)
 public/            l’app (page, styles, icônes, mode hors ligne)
 wrangler.toml      la configuration Cloudflare
 ```
@@ -21,58 +21,34 @@ wrangler.toml      la configuration Cloudflare
 
 ## Ce qu’il te faut
 
-- Un ordinateur avec **Node.js 20 ou plus récent** (déjà installé pour Forme).
-- Ton **compte Cloudflare** (le même que pour Forme).
+Rien à installer sur ton ordinateur : tout se fait dans le navigateur.
+
+- Ton **compte Cloudflare** (le même que pour Forme), relié à GitHub.
 - Ton application **Enable Banking** : son identifiant (déjà dans `wrangler.toml`) et le fichier `.pem` de sa clé privée.
 
 ## Installation (une seule fois, environ 15 minutes)
 
-Ouvre un terminal dans le dossier `budget-sandbox`, puis tape les commandes une par une.
+**1. Créer la base de données**
 
-**1. Installer l’outil Cloudflare**
-```
-npm install
-```
+Sur dash.cloudflare.com : **Stockage et bases de données**, puis **D1**, puis **Créer une base de données**. Nomme-la `budget` et valide. Copie son **ID** (Database ID) et remplace `REMPLACE_MOI` dans `wrangler.toml` (sur github.com : ouvre le fichier, crayon ✎, puis « Commit changes »). Cet ID n’est pas secret. Les tables se créent toutes seules au premier lancement.
 
-**2. Te connecter à Cloudflare** (inutile si tu l’as déjà fait pour Forme sur cet ordinateur)
-```
-npx wrangler login
-```
+**2. Brancher le dépôt GitHub**
 
-**3. Créer la base de données**
-```
-npx wrangler d1 create budget
-```
-La commande affiche un `database_id`. Ouvre `wrangler.toml` et remplace `REMPLACE_MOI` par cet id.
+**Workers et Pages**, puis **Créer**, puis **Importer un dépôt** (Import a repository). Choisis `budget-sandbox`.
+- Nom du projet : `budget` (le même que dans `wrangler.toml`).
+- Commande de déploiement : laisse `npx wrangler deploy`.
 
-**4. Enregistrer tes secrets**
+Valide. Cloudflare publie l’app, puis la republie à chaque modification sur GitHub.
 
-La clé privée Enable Banking, lue directement depuis le fichier `.pem` (remplace le chemin par celui de ton fichier) :
+**3. Enregistrer les deux secrets**
 
-- sur Mac ou Linux :
-  ```
-  npx wrangler secret put EB_PRIVATE_KEY < /chemin/vers/ta-cle.pem
-  ```
-- sur Windows (PowerShell) :
-  ```
-  Get-Content C:\chemin\vers\ta-cle.pem -Raw | npx wrangler secret put EB_PRIVATE_KEY
-  ```
+Dans le Worker `budget` : **Paramètres**, puis **Variables et secrets**, puis **Ajouter**. Choisis le type **Secret** pour les deux.
+- `EB_PRIVATE_KEY` : ouvre le fichier `.pem` avec le Bloc-notes (clic droit, Ouvrir avec), sélectionne tout et colle-le. Les retours à la ligne peuvent disparaître, l’app le gère.
+- `CODE_INSTALLATION` : invente une longue phrase de passe (au moins 20 caractères). Elle sert seulement à activer un téléphone **administrateur** : le tien. Garde-la dans ton gestionnaire de mots de passe.
 
-Puis le code d’installation (la commande te demande de le taper) :
-```
-npx wrangler secret put CODE_INSTALLATION
-```
-Invente une longue phrase de passe (au moins 20 caractères). Elle sert seulement à activer un téléphone **administrateur** : le tien. Garde-la dans ton gestionnaire de mots de passe.
+**4. Déclarer l’adresse chez Enable Banking**
 
-**5. Mettre en ligne** (crée les tables de la base, puis publie l’app)
-```
-npm run deploy
-```
-La commande affiche ton adresse, du type `https://budget.ton-compte.workers.dev`.
-
-**6. Déclarer l’adresse chez Enable Banking**
-
-Dans le Control Panel Enable Banking, ajoute à ton application la Redirect URL :
+L’adresse de l’app s’affiche en haut du Worker, du type `https://budget.ton-compte.workers.dev`. Dans le Control Panel Enable Banking, ajoute à ton application la Redirect URL :
 ```
 https://budget.ton-compte.workers.dev/callback
 ```
@@ -96,12 +72,12 @@ L’invitation reste valable 48 heures. Si l’app installée lui redemande un c
 ## Entretien
 
 - **Autorisation bancaire expirée** (tous les 90 à 180 jours, selon la banque) : l’app affiche un bandeau. Touche **Renouveler** et redonne ton accord sur le site de la banque. L’historique est conservé.
-- **Voir ce qui se passe sur le serveur** : `npx wrangler tail`, puis touche le bouton de synchronisation dans l’app.
-- **Modifier le code** : après chaque changement, `npm run deploy`.
-- **Tester sur l’ordinateur** : copie `.dev.vars.example` en `.dev.vars`, remplis-le, puis lance `npx wrangler d1 migrations apply budget --local` et `npm run dev`. L’app tourne alors sur `https://localhost:8787`, la Redirect URL déjà déclarée chez Enable Banking.
+- **Voir ce qui se passe sur le serveur** : dans le Worker `budget`, onglet **Journaux** (Logs), puis **Commencer** (Begin log stream), puis touche le bouton de synchronisation dans l’app.
+- **Modifier le code** : chaque modification sur GitHub est republiée automatiquement par Cloudflare (onglet **Déploiements** pour suivre).
+- **Tester sur un ordinateur** (facultatif, pour un développeur) : copie `.dev.vars.example` en `.dev.vars`, remplis-le, puis `npm install` et `npm run dev`. L’app tourne alors sur `https://localhost:8787`.
 
 ## Limites connues
 
 - Les opérations arrivent avec le délai de la banque : 2 synchros automatiques par jour, plus le bouton de synchronisation quand tu ouvres l’app.
-- Le code Enable Banking a été écrit sans pouvoir consulter leur documentation en direct, puis testé contre une imitation de leur service. Le premier essai sur le sandbox réel peut révéler un nom de champ différent : `npx wrangler tail` affiche alors la réponse exacte de leur serveur.
+- Le code Enable Banking a été écrit sans pouvoir consulter leur documentation en direct, puis testé contre une imitation de leur service. Le premier essai sur le sandbox réel peut révéler un nom de champ différent : les Journaux du Worker affichent alors la réponse exacte de leur serveur.
 - À la première connexion, l’app demande 1 an d’historique. Si la banque refuse, elle se contente de 89 jours.

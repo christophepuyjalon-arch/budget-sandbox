@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev --local-protocol https",
-    "deploy": "wrangler d1 migrations apply budget --remote && wrangler deploy",
+    "deploy": "wrangler deploy",
     "logs": "wrangler tail"
   },
   "devDependencies": {

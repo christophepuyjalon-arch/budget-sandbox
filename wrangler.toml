@@ -10,13 +10,12 @@ directory = "./public"
 binding = "ASSETS"
 run_worker_first = ["/api/*", "/i/*", "/callback"]
 
-# Base de données : remplace l'id par celui affiché par
-#   npx wrangler d1 create budget
+# Base de données D1 : remplace l'id par celui de la base « budget »
+# créée dans le tableau de bord Cloudflare (Stockage et bases de données > D1).
 [[d1_databases]]
 binding = "DB"
 database_name = "budget"
 database_id = "REMPLACE_MOI"
-migrations_dir = "migrations"
 
 [vars]
 # Identifiant de ton application Enable Banking (pas secret).
@@ -28,6 +27,7 @@ EB_APP_ID = "21d719a6-32b5-462c-b849-c7ca4bbc4f68"
 [triggers]
 crons = ["7 6,18 * * *"]
 
-# Secrets à définir (jamais dans ce fichier !) :
-#   npx wrangler secret put EB_PRIVATE_KEY      (contenu du fichier .pem)
-#   npx wrangler secret put CODE_INSTALLATION   (phrase de passe pour activer ton téléphone)
+# Secrets à définir dans le tableau de bord (Worker > Paramètres > Variables et secrets),
+# jamais dans ce fichier :
+#   EB_PRIVATE_KEY      contenu du fichier .pem
+#   CODE_INSTALLATION   phrase de passe pour activer ton téléphone

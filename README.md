@@ -10,7 +10,10 @@ Budget récupère automatiquement les opérations de vos comptes bancaires (via 
 
 Le classement se fait sur le téléphone à partir de règles (une liste de départ de commerçants courants, puis les tiennes). Les dépenses rattachées à un projet ne comptent pas dans les budgets du mois. Les comptes d’épargne n’entrent pas dans le budget.
 
-À venir : prévision du solde jusqu’à la fin du mois, bouton « Analyser avec Claude », alertes.
+- **Prévision du solde** (onglet Aujourd’hui) : solde réel du mois puis prévu jusqu’au 10 du mois suivant, avec la fin de mois et le point bas. Elle repère seule les opérations qui reviennent chaque mois (salaires, prêt, énergie…), ajoute le prélèvement des cartes à débit différé (achats déjà faits + rythme habituel) et les opérations prévues saisies à la main. Toucher une ligne « À venir » permet de l’ignorer.
+- **Analyser avec Claude** : prépare un résumé des comptes (sans IBAN ni noms) avec les questions choisies, à envoyer à l’app Claude.
+
+À venir : alertes.
 
 Chaque opération peut recevoir un commentaire, et « faire de même pour les opérations contenant… » l’applique automatiquement aux suivantes.
 

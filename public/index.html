@@ -89,6 +89,22 @@
 
   <button id="lien-a-classer" class="a-classer" hidden></button>
 
+  <section aria-label="Prévision du solde" id="section-prevision" hidden>
+    <h3 class="titre-section">Prévision du solde</h3>
+    <div class="indicateurs">
+      <div><span class="etiquette" id="prev-fin-titre">Fin du mois</span><b id="prev-fin">–</b></div>
+      <div><span class="etiquette">Point bas</span><b id="prev-bas">–</b><small id="prev-bas-date"></small></div>
+    </div>
+    <div class="cadre-graph petit"><canvas id="g-prevision" role="img" aria-label="Solde réel puis prévu"></canvas></div>
+    <p class="legende"><span><i class="ligne-pleine"></i>Solde réel</span><span><i class="ligne-tirets"></i>Prévu</span></p>
+    <details class="a-venir" id="a-venir-bloc">
+      <summary id="a-venir-titre">À venir</summary>
+      <ul id="a-venir" class="lignes a-venir-liste"></ul>
+      <button id="btn-ajout-prevu" class="secondaire">Ajouter une opération prévue</button>
+      <p class="discret-texte">Prévision calculée à partir des opérations qui reviennent chaque mois, des paiements carte à débiter et du rythme habituel de vos cartes. Touche une ligne pour l’ignorer.</p>
+    </details>
+  </section>
+
   <section aria-label="Enveloppes">
     <h3 class="titre-section">Dépenses courantes</h3>
     <div id="anneaux" class="anneaux"></div>
@@ -107,6 +123,12 @@
   <section aria-label="Autres dépenses" id="section-suivi">
     <h3 class="titre-section">Autres dépenses</h3>
     <ul id="suivi" class="lignes"></ul>
+  </section>
+
+  <section class="carte-analyse" aria-label="Analyse">
+    <h3 class="titre-section">Conseils de Claude</h3>
+    <p class="discret-texte">Prépare un résumé de vos comptes, sans IBAN ni nom, à coller dans l’app Claude pour obtenir des conseils.</p>
+    <button id="btn-analyse" class="principal">Analyser avec Claude</button>
   </section>
 
   <section aria-label="Comptes">
@@ -299,6 +321,52 @@
       <button value="annuler" class="secondaire" formnovalidate>Annuler</button>
       <button value="ok" id="fiche-ok" class="principal">Enregistrer</button>
     </div>
+  </form>
+</dialog>
+
+<!-- ===== Opération prévue ===== -->
+<dialog id="dlg-prevu" class="fiche">
+  <form method="dialog" id="form-prevu">
+    <h2>Opération prévue</h2>
+    <label for="prevu-libelle">Libellé</label><input id="prevu-libelle" maxlength="80" required placeholder="ex. Prime de fin d’année">
+    <div class="deux">
+      <div><label for="prevu-date">Date</label><input id="prevu-date" type="date" required></div>
+      <div><label for="prevu-montant">Montant (€)</label><input id="prevu-montant" type="number" inputmode="decimal" step="0.01" min="0" required></div>
+    </div>
+    <div class="filtres" role="radiogroup" aria-label="Sens">
+      <button type="button" data-sens="-1" class="actif" role="radio" aria-checked="true">Dépense</button>
+      <button type="button" data-sens="1" role="radio" aria-checked="false">Rentrée d’argent</button>
+    </div>
+    <div class="deux boutons">
+      <button value="annuler" class="secondaire" formnovalidate>Annuler</button>
+      <button value="ok" class="principal">Ajouter</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ===== Analyse avec Claude ===== -->
+<dialog id="dlg-analyse" class="fiche">
+  <form method="dialog">
+    <h2>Analyser avec Claude</h2>
+    <label for="analyse-periode">Période</label>
+    <select id="analyse-periode">
+      <option value="1">Ce mois-ci</option>
+      <option value="3" selected>Les 3 derniers mois</option>
+      <option value="12">Les 12 derniers mois (résumé)</option>
+    </select>
+    <h3 class="titre-section">Ce que tu veux savoir</h3>
+    <label class="case"><input type="checkbox" class="analyse-q" value="evitables" checked> Les dépenses dont on aurait pu se passer</label>
+    <label class="case"><input type="checkbox" class="analyse-q" value="abonnements" checked> Abonnements, frais bancaires et prélèvements à revoir</label>
+    <label class="case"><input type="checkbox" class="analyse-q" value="budgets" checked> Des budgets plus réalistes par catégorie</label>
+    <label class="case"><input type="checkbox" class="analyse-q" value="tresorerie" checked> Comment éviter le découvert (débit différé, prévision)</label>
+    <label class="case"><input type="checkbox" class="analyse-q" value="projets"> Le financement des projets</label>
+    <p id="analyse-taille" class="discret-texte"></p>
+    <div class="deux boutons">
+      <button type="button" id="btn-analyse-copier" class="secondaire">Copier le texte</button>
+      <button type="button" id="btn-analyse-partager" class="principal">Envoyer à Claude</button>
+    </div>
+    <p class="discret-texte">« Envoyer » ouvre le partage du téléphone : choisis l’app Claude. Sinon, copie le texte et colle-le dans une nouvelle conversation sur claude.ai, avec ton compte personnel.</p>
+    <button value="fermer" class="secondaire">Fermer</button>
   </form>
 </dialog>
 

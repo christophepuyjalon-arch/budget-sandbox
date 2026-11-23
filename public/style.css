@@ -268,3 +268,18 @@ small.inline { display: inline; }
 .table-defile table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; color: var(--encre); }
 .table-defile th, .table-defile td { padding: 4px 6px; border-bottom: 1px solid var(--filet); text-align: right; white-space: nowrap; }
 .table-defile th:first-child, .table-defile td:first-child { text-align: left; }
+
+/* Prévision */
+.indicateurs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.indicateurs > div { background: var(--surface); border-radius: 10px; padding: 8px 10px; min-width: 0; }
+.indicateurs b { display: block; font-family: var(--titre); font-weight: 600; font-size: 26px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.indicateurs small { color: var(--encre-2); font-size: 13px; }
+.cadre-graph.petit { height: 180px; background: var(--surface); border-radius: 10px; padding: 8px 4px 0; margin-top: 8px; }
+.legende i.ligne-pleine, .legende i.ligne-tirets { height: 0; width: 16px; border-radius: 0; vertical-align: 3px; border-top: 2px solid var(--serie-1); background: none; }
+.legende i.ligne-tirets { border-top-style: dashed; }
+.a-venir summary { cursor: pointer; padding: 10px 0; font-weight: 500; }
+.a-venir-liste li > button { align-items: baseline; }
+.a-venir-liste .quand { color: var(--encre-2); font-size: 13px; min-width: 58px; display: inline-block; }
+.a-venir-liste .quoi { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.carte-analyse { background: var(--surface); border-radius: 12px; padding: 2px 14px 14px; margin-top: 22px; }
+.carte-analyse .titre-section { margin-top: 12px; }

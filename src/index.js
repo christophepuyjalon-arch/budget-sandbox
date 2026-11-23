@@ -175,6 +175,17 @@ async function router(req, env) {
     return repondre({ depuis, operations: r.results });
   }
 
+  // Prévision : opérations récurrentes ignorées et opérations prévues ajoutées à la main. Toute la famille.
+  if (p === '/api/prevision' && req.method === 'PUT') {
+    const c = await req.json();
+    const ignores = [...new Set((c.ignores || []).map((x) => String(x).slice(0, 80)))].slice(0, 200);
+    const aujourdhui = maintenant().slice(0, 10);
+    const ajouts = (c.ajouts || []).filter((a) => /^\d{4}-\d{2}-\d{2}$/.test(a.date || '') && a.date >= aujourdhui && Number.isFinite(Number(a.montant)))
+      .slice(0, 100).map((a) => ({ id: String(a.id || crypto.randomUUID()).slice(0, 40), date: a.date, libelle: String(a.libelle || 'Opération prévue').slice(0, 80), montant: Math.round(Number(a.montant)) }));
+    await ecrireReglage(env, 'prevision', { ignores, ajouts }).run();
+    return repondre({ ok: true });
+  }
+
   if (p === '/api/deconnexion' && req.method === 'POST') {
     await env.DB.prepare('DELETE FROM appareils WHERE id = ?').bind(moi.id).run();
     return json({ ok: true }, 200, cookieEfface(req));
@@ -391,7 +402,7 @@ export async function synchroniser(env, psu, seulementConnexion = null) {
 async function etat(env, mois) {
   if (!/^\d{4}-\d{2}$/.test(mois || '')) mois = maintenant().slice(0, 7);
   const [debut, fin] = [`${mois}-01`, `${mois}-31`];
-  const [comptes, connexions, operations, bornes, synchro, categories, regles, projets, encours, cartes, nomsCartes] = await env.DB.batch([
+  const [comptes, connexions, operations, bornes, synchro, categories, regles, projets, encours, cartes, nomsCartes, prevision] = await env.DB.batch([
     env.DB.prepare(`SELECT c.id, c.nom, c.iban, c.devise, c.solde, c.solde_type, c.solde_date, c.synchro, c.masque, c.connexion, c.type, c.jour_debit, x.banque
       FROM comptes c JOIN connexions x ON x.id = c.connexion ORDER BY x.banque, c.nom`),
     env.DB.prepare('SELECT id, banque, pays, expire, cree, statut, erreur FROM connexions ORDER BY cree'),
@@ -414,6 +425,7 @@ async function etat(env, mois) {
       JOIN comptes c ON c.id = o.compte WHERE o.statut = 'AVNR' AND c.masque = 0 GROUP BY o.compte, o.carte`),
     env.DB.prepare(`SELECT DISTINCT o.carte FROM operations o JOIN comptes c ON c.id = o.compte WHERE o.carte IS NOT NULL AND c.masque = 0`),
     env.DB.prepare("SELECT valeur FROM reglages WHERE cle = 'cartes'"),
+    env.DB.prepare("SELECT valeur FROM reglages WHERE cle = 'prevision'"),
   ]);
   return {
     mois,
@@ -428,5 +440,6 @@ async function etat(env, mois) {
     encours: encours.results,
     cartes: cartes.results.map((c) => c.carte).sort(),
     nomsCartes: nomsCartes.results[0] ? JSON.parse(nomsCartes.results[0].valeur) : {},
+    prevision: prevision.results[0] ? JSON.parse(prevision.results[0].valeur) : { ignores: [], ajouts: [] },
   };
 }

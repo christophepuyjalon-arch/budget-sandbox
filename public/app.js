@@ -272,6 +272,8 @@ function dessiner() {
   dessinerAccueil(d, calcul);
   dessinerOperations(d, calcul);
   remplirChoixCategories();
+  $('section-prevision').hidden = d.mois !== moisCourant() || !d.comptes.length;
+  if (d.mois === moisCourant()) dessinerPrevision();
   if (!$('page-reglages').hidden) dessinerReglages();
 }
 
@@ -864,6 +866,7 @@ function opsHistorique() {
 function rafraichirVuesHistorique() {
   if (rechercheActive()) rechercher();
   if (!$('page-graphiques').hidden) dessinerGraphiques();
+  if (donnees?.mois === moisCourant()) dessinerPrevision();
 }
 
 // --- Recherche ---
@@ -1088,6 +1091,298 @@ $('choix-cat-graph').addEventListener('click', (e) => {
   if (!b) return;
   catGraph = b.dataset.g;
   dessinerGraphiques();
+});
+
+// ---------- prévision du solde ----------
+const MOIS_EN_LETTRES = /\b(JANVIER|FEVRIER|MARS|AVRIL|MAI|JUIN|JUILLET|AOUT|SEPTEMBRE|OCTOBRE|NOVEMBRE|DECEMBRE|JANV|FEVR?|AVR|JUIL|SEPT?|OCT|NOV|DEC)\b/g;
+// Clé d'une opération récurrente : le commerçant ou l'émetteur, sans dates ni mois (« SALAIRE NOVEMBRE » = « SALAIRE OCTOBRE »).
+function cleRecurrence(o) {
+  const base = normaliser(o.contrepartie || o.libelle)
+    .replace(/\b(PAIEMENT|CB|CARTE|PRLV|SEPA|VIR|VIREMENT|INST|RECU|EMIS|DE|DU|LE|LA|M|MME|MR)\b/g, ' ')
+    .replace(MOIS_EN_LETTRES, ' ')
+    .replace(/\bX?\d[\d/.:-]*\b/g, ' ').replace(/[^A-Z0-9&' ]/g, ' ').replace(/\s+/g, ' ').trim();
+  return `${o.montant > 0 ? '+' : '-'}${base.split(' ').slice(0, 3).join(' ')}`;
+}
+const mediane = (l) => { const t = [...l].sort((a, b) => a - b); const n = t.length; return n ? (n % 2 ? t[(n - 1) / 2] : (t[n / 2 - 1] + t[n / 2]) / 2) : 0; };
+const dateDuMois = (m, jour) => `${m}-${String(Math.min(jour, joursDansMois(m))).padStart(2, '0')}`;
+const lendemain = (iso) => { const j = new Date(`${iso}T12:00:00`); j.setDate(j.getDate() + 1); return isoLocal(j); };
+
+// Opérations qui reviennent au moins 2 des 3 derniers mois (hors cartes), avec leur jour et montant habituels.
+function detecterRecurrences(ops, d) {
+  const m0 = moisCourant();
+  const prec = [1, 2, 3].map((n) => decalerMois(m0, -n));
+  const courants = new Set(d.comptes.filter((c) => !c.masque && c.type !== 'epargne').map((c) => c.id));
+  const groupes = {};
+  for (const o of ops) {
+    if (!courants.has(o.compte) || o.carte || o.statut !== 'BOOK' || Math.abs(o.montant) < 500 || o.cat === 'differe') continue;
+    const m = o.date_compta.slice(0, 7);
+    if (m !== m0 && !prec.includes(m)) continue;
+    const k = cleRecurrence(o);
+    const g = (groupes[k] ??= { cle: k, libelle: o.libelle, mois: {}, jours: [], ceMois: 0 });
+    if (m === m0) { g.ceMois += o.montant; continue; }
+    g.mois[m] = (g.mois[m] || 0) + o.montant;
+    g.jours.push(Number(o.date_compta.slice(8, 10)));
+    g.libelle = o.libelle;
+  }
+  return Object.values(groupes)
+    .filter((g) => Object.keys(g.mois).length >= 2 && (g.mois[prec[0]] || g.mois[prec[1]]))
+    .map((g) => ({ ...g, montant: Math.round(mediane(Object.values(g.mois))), jour: Math.round(mediane(g.jours)) }));
+}
+
+// Solde de fin de journée, reconstitué à rebours depuis le solde actuel.
+function soldesPasses(depuisIso) {
+  const d = donnees;
+  const courants = d.comptes.filter((c) => !c.masque && c.type !== 'epargne');
+  const ids = new Set(courants.map((c) => c.id));
+  let solde = courants.reduce((t, c) => t + (c.solde || 0), 0);
+  const mouvements = {};
+  for (const o of historique.operations) {
+    if (ids.has(o.compte) && o.statut === 'BOOK') mouvements[o.date_compta] = (mouvements[o.date_compta] || 0) + o.montant;
+  }
+  const jours = [];
+  for (let j = new Date(); isoLocal(j) >= depuisIso; j.setDate(j.getDate() - 1)) {
+    const iso = isoLocal(j);
+    jours.push([iso, solde]);
+    solde -= mouvements[iso] || 0;
+  }
+  return jours.reverse();
+}
+
+let prevision = null;
+function calculerPrevision() {
+  const d = donnees;
+  const ops = opsHistorique();
+  const auj = aujourdhui();
+  const m0 = moisCourant(), m1 = decalerMois(m0, 1);
+  const horizon = `${m1}-10`;
+  const evenements = [];
+  const ignores = new Set(d.prevision?.ignores || []);
+
+  // 1. Opérations récurrentes (salaires, prêt, énergie, école…)
+  for (const r of detecterRecurrences(ops, d)) {
+    if (ignores.has(r.cle)) continue;
+    if (!r.ceMois) {
+      let date = dateDuMois(m0, r.jour);
+      const retard = date <= auj;
+      if (retard) date = lendemain(auj);
+      evenements.push({ date, libelle: r.libelle, montant: r.montant, cle: r.cle, retard });
+    }
+    if (r.jour <= 10) evenements.push({ date: dateDuMois(m1, r.jour), libelle: r.libelle, montant: r.montant, cle: r.cle });
+  }
+
+  // 2. Cartes à débit différé : jour habituel du prélèvement (5 par défaut)
+  const joursCarte = ops.filter((o) => o.carte && o.statut === 'BOOK' && o.date_compta !== o.date).map((o) => Number(o.date_compta.slice(8, 10)));
+  const jourCarte = joursCarte.length ? Math.round(mediane(joursCarte)) : 5;
+  const aDebiter = ops.filter((o) => o.statut === 'AVNR' && !o.epargne);
+  const anciens = aDebiter.filter((o) => o.date < `${m0}-01`).reduce((t, o) => t + o.montant, 0);
+  const ceMois = aDebiter.filter((o) => o.date >= `${m0}-01`).reduce((t, o) => t + o.montant, 0);
+  if (anciens) {
+    const date = dateDuMois(m0, jourCarte) > auj ? dateDuMois(m0, jourCarte) : lendemain(auj);
+    evenements.push({ date, libelle: 'Prélèvement des cartes (achats du mois dernier)', montant: anciens, carte: true });
+  }
+  // Reste du mois : rythme moyen des cartes sur les 3 derniers mois complets.
+  const prec = [1, 2, 3].map((n) => decalerMois(m0, -n));
+  const parMoisCarte = prec.map((m) => ops.filter((o) => o.carte && !o.epargne && o.montant < 0 && o.date.startsWith(m)).reduce((t, o) => t + o.montant, 0)).filter((v) => v);
+  const moyenneCarte = parMoisCarte.length ? parMoisCarte.reduce((t, v) => t + v, 0) / parMoisCarte.length : 0;
+  const nb = joursDansMois(m0), jour = Number(auj.slice(8, 10));
+  const estime = Math.round(moyenneCarte * (nb - jour) / nb);
+  if (ceMois || estime) {
+    evenements.push({ date: dateDuMois(m1, jourCarte), libelle: `Prélèvement des cartes (achats de ${nomMois(m0).split(' ')[0]}${estime ? `, dont ${fmt(-estime)} estimés` : ''})`, montant: ceMois + estime, carte: true });
+  }
+
+  // 3. Opérations prévues à la main
+  for (const a of d.prevision?.ajouts || []) if (a.date > auj && a.date <= horizon) evenements.push({ ...a, ajout: true });
+
+  evenements.sort((a, b) => a.date.localeCompare(b.date));
+  // Courbe : réel du 1er à aujourd'hui, puis prévu jusqu'à l'horizon.
+  const reel = soldesPasses(`${m0}-01`);
+  let solde = reel.length ? reel[reel.length - 1][1] : 0;
+  const prevu = [[auj, solde]];
+  let bas = { solde, date: auj }, fin = null;
+  for (let j = lendemain(auj); j <= horizon; j = lendemain(j)) {
+    for (const e of evenements) if (e.date === j) solde += e.montant;
+    prevu.push([j, solde]);
+    if (solde < bas.solde) bas = { solde, date: j };
+    if (j === `${m0}-${String(nb).padStart(2, '0')}`) fin = solde;
+  }
+  if (fin === null) fin = prevu[prevu.length - 1][1];
+  return { reel, prevu, evenements, bas, fin, horizon };
+}
+
+async function dessinerPrevision() {
+  if (!donnees?.comptes?.length) return;
+  try { await chargerHistorique(); } catch { return; }
+  if (typeof Chart === 'undefined') { setTimeout(dessinerPrevision, 200); return; }
+  prevision = calculerPrevision();
+  const p = prevision;
+  $('prev-fin').textContent = fmt(p.fin);
+  $('prev-fin').classList.toggle('negatif', p.fin < 0);
+  $('prev-bas').textContent = fmt(p.bas.solde);
+  $('prev-bas').classList.toggle('negatif', p.bas.solde < 0);
+  $('prev-bas-date').textContent = `le ${new Date(`${p.bas.date}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}`;
+  const labels = [...p.reel.map(([j]) => j), ...p.prevu.slice(1).map(([j]) => j)];
+  const nReel = p.reel.length;
+  const s1 = couleur('--serie-1');
+  const o = optionsCommunes();
+  o.scales.x.ticks.callback = function (v) { const j = this.getLabelForValue(v); return j.endsWith('-01') || j.endsWith('-15') ? `${Number(j.slice(8))} ${moisCourtNom(j.slice(0, 7))}` : null; };
+  o.scales.x.ticks.autoSkip = false;
+  o.scales.y.grid.color = (c) => (c.tick.value === 0 ? couleur('--encre-2') : couleur('--filet'));
+  o.plugins.tooltip.callbacks.title = (items) => new Date(`${items[0].label}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'long' });
+  o.plugins.tooltip.filter = (item) => item.raw !== null && !(item.datasetIndex === 1 && item.dataIndex === nReel - 1);
+  graphique('g-prevision', {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Solde réel', data: labels.map((_, i) => (i < nReel ? p.reel[i][1] / 100 : null)), borderColor: s1, borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, tension: 0 },
+        { label: 'Prévu', data: labels.map((_, i) => (i >= nReel - 1 ? p.prevu[i - nReel + 1][1] / 100 : null)), borderColor: s1, borderDash: [5, 4], borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, tension: 0 },
+      ],
+    },
+    options: o,
+  });
+  $('a-venir-titre').textContent = `À venir d’ici le ${Number(p.horizon.slice(8))} ${nomMois(p.horizon.slice(0, 7)).split(' ')[0]} (${p.evenements.length})`;
+  $('a-venir').innerHTML = p.evenements.map((e, i) => `<li><button data-prevu="${i}">
+      <span class="quand">${new Date(`${e.date}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</span>
+      <span class="quoi">${echapper(e.libelle)}${e.retard ? ' <small>(habituellement plus tôt)</small>' : ''}</span>
+      <b class="${e.montant > 0 ? 'positif' : ''}">${fmtSigne(e.montant)}</b></button></li>`).join('') || '<li class="vide">Rien de prévu.</li>';
+}
+
+async function enregistrerPrevision(modif) {
+  const pr = { ignores: [...(donnees.prevision?.ignores || [])], ajouts: [...(donnees.prevision?.ajouts || [])] };
+  modif(pr);
+  try { await api('/api/prevision', { method: 'PUT', body: JSON.stringify(pr) }); await charger({ garderHistorique: true }); } catch (e) { alert(e.message); }
+}
+$('a-venir').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-prevu]');
+  if (!b || !prevision) return;
+  const ev = prevision.evenements[b.dataset.prevu];
+  if (ev.carte) { alert('Le prélèvement des cartes est calculé à partir des paiements à débiter : il ne peut pas être ignoré.'); return; }
+  if (ev.ajout) {
+    if (confirm(`Supprimer « ${ev.libelle} » des opérations prévues ?`)) enregistrerPrevision((pr) => { pr.ajouts = pr.ajouts.filter((a) => a.id !== ev.id); });
+  } else if (confirm(`Ne plus prévoir « ${ev.libelle} » (${fmtSigne(ev.montant)}) ? Utile si ce n’est plus une opération mensuelle.`)) {
+    enregistrerPrevision((pr) => { pr.ignores.push(ev.cle); });
+  }
+});
+let sensPrevu = -1;
+$('btn-ajout-prevu').addEventListener('click', () => {
+  $('form-prevu').reset();
+  sensPrevu = -1;
+  document.querySelectorAll('[data-sens]').forEach((x) => { x.classList.toggle('actif', x.dataset.sens === '-1'); x.setAttribute('aria-checked', String(x.dataset.sens === '-1')); });
+  $('prevu-date').min = lendemain(aujourdhui());
+  $('prevu-date').value = lendemain(aujourdhui());
+  $('dlg-prevu').showModal();
+});
+document.querySelectorAll('[data-sens]').forEach((b) => b.addEventListener('click', () => {
+  sensPrevu = Number(b.dataset.sens);
+  document.querySelectorAll('[data-sens]').forEach((x) => { x.classList.toggle('actif', x === b); x.setAttribute('aria-checked', String(x === b)); });
+}));
+$('dlg-prevu').addEventListener('close', () => {
+  if ($('dlg-prevu').returnValue !== 'ok') return;
+  const montant = enCentimesSaisis($('prevu-montant').value) * sensPrevu;
+  const a = { id: crypto.randomUUID?.() || String(Date.now()), date: $('prevu-date').value, libelle: $('prevu-libelle').value.trim(), montant };
+  enregistrerPrevision((pr) => { pr.ajouts.push(a); });
+});
+
+// ---------- analyse avec Claude ----------
+// Résumé texte des comptes, sans IBAN ni noms, à coller dans l'app Claude.
+async function texteAnalyse() {
+  await chargerHistorique();
+  const d = donnees;
+  const nbMois = Number($('analyse-periode').value);
+  const questions = [...document.querySelectorAll('.analyse-q:checked')].map((c) => c.value);
+  const m0 = moisCourant();
+  const moisL = Array.from({ length: nbMois }, (_, i) => decalerMois(m0, i - nbMois + 1));
+  const ops = opsHistorique().filter((o) => !o.epargne && o.date >= `${moisL[0]}-01`);
+  const types = Object.fromEntries(d.categories.map((c) => [c.id, c.type]));
+  const e = (c) => (c / 100).toFixed(2).replace('.', ',');
+
+  // Anonymisation : noms des titulaires (tirés des noms de comptes et des cartes) remplacés.
+  const mots = new Set();
+  for (const c of d.comptes) for (const m of normaliser(c.nom).split(/[^A-Z]+/)) if (m.length >= 3 && !['MME', 'MLLE', 'COMPTE', 'JOINT', 'LIVRET'].includes(m)) mots.add(m);
+  for (const n of Object.values(d.nomsCartes || {})) for (const m of normaliser(n).split(/[^A-Z]+/)) if (m.length >= 3) mots.add(m);
+  const anonyme = (t) => { let x = normaliser(t); for (const m of mots) x = x.replace(new RegExp(`\\b${m}\\b`, 'g'), '[NOM]'); return x; };
+  const cartes = Object.keys(d.nomsCartes || {}).concat(d.cartes || []).filter((v, i, a) => a.indexOf(v) === i).sort();
+  const carteAnonyme = (c) => (c ? `carte ${String.fromCharCode(65 + Math.max(cartes.indexOf(c), 0))}` : '');
+  const nomCat = (o) => (o.projet ? `Projet : ${o.projetNom}` : o.cat ? nomCategorie(d, o.cat) : 'À classer');
+
+  const L = [];
+  L.push('# Budget familial : données pour analyse', '');
+  L.push('Contexte : un foyer (deux adultes), comptes à la Caisse d’Épargne. Les deux cartes bancaires sont à débit différé : les achats carte d’un mois sont prélevés un par un vers le 5 du mois suivant. Les opérations sont datées du jour de l’achat. Montants en euros, négatifs = dépenses.');
+  L.push(`Période : ${nomMois(moisL[0])} à ${nomMois(m0)}. Le mois en cours est incomplet (jour ${Number(aujourdhui().slice(8))} sur ${joursDansMois(m0)}).`, '');
+  L.push('## Budgets mensuels', 'Catégorie | Type | Budget mensuel');
+  const libType = { fixe: 'charge fixe', enveloppe: 'dépense courante', suivi: 'sans budget', hors: 'hors budget (revenus, virements…)' };
+  for (const c of d.categories) L.push(`${c.nom} | ${libType[c.type]} | ${c.budget ? e(c.budget) : '-'}`);
+  if (d.projets.length) {
+    L.push('', '## Projets (budget sur une période, hors budgets du mois)', 'Projet | Budget | Période | Dépensé');
+    for (const p of d.projets.filter((x) => !x.archive)) L.push(`${p.nom} | ${e(p.budget)} | ${p.debut} à ${p.fin} | ${e(p.depense)}`);
+  }
+  L.push('', '## Dépenses par catégorie et par mois');
+  const lignesCat = [...d.categories.map((c) => c.nom), 'À classer', 'Projets'];
+  L.push(`Catégorie | ${moisL.join(' | ')}`);
+  for (const nom of lignesCat) {
+    const v = moisL.map((m) => ops.filter((o) => o.date.startsWith(m) && (nom === 'Projets' ? o.projet : !o.projet && nomCat(o) === nom)).reduce((t, o) => t + o.montant, 0));
+    if (v.some((x) => x)) L.push(`${nom} | ${v.map(e).join(' | ')}`);
+  }
+  if (prevision) {
+    L.push('', '## Prévision du solde des comptes courants');
+    L.push(`Solde aujourd’hui : ${e(prevision.reel[prevision.reel.length - 1]?.[1] || 0)}. Fin du mois prévue : ${e(prevision.fin)}. Point bas prévu : ${e(prevision.bas.solde)} le ${prevision.bas.date}.`);
+    L.push('Opérations attendues :');
+    for (const ev of prevision.evenements) L.push(`- ${ev.date} | ${anonyme(ev.libelle)} | ${e(ev.montant)}`);
+  }
+  if (nbMois <= 3) {
+    L.push('', '## Opérations', 'Date | Libellé | Montant | Catégorie | Commentaire | Carte');
+    for (const o of ops) {
+      if (types[o.cat] === 'hors' && o.cat !== 'revenus') continue;
+      L.push(`${o.date} | ${anonyme(o.libelle)} | ${e(o.montant)} | ${nomCat(o)} | ${o.commentaire ? anonyme(o.commentaire) : ''} | ${carteAnonyme(o.carte)}`);
+    }
+  } else {
+    // 12 mois : principaux commerçants et grosses dépenses, pour rester lisible.
+    const parCle = {};
+    for (const o of ops) {
+      if (o.montant >= 0 || (o.cat && types[o.cat] === 'hors')) continue;
+      const k = cleRecurrence(o).slice(1) || anonyme(o.libelle);
+      const x = (parCle[k] ??= { total: 0, n: 0, cat: nomCat(o) });
+      x.total -= o.montant; x.n++;
+    }
+    L.push('', '## Principaux commerçants et prélèvements (12 mois)', 'Libellé | Total | Nombre | Catégorie');
+    for (const [k, x] of Object.entries(parCle).sort((a, b) => b[1].total - a[1].total).slice(0, 60)) L.push(`${anonyme(k)} | ${e(x.total)} | ${x.n} | ${x.cat}`);
+    L.push('', '## Dépenses de plus de 200 €', 'Date | Libellé | Montant | Catégorie | Commentaire');
+    for (const o of ops.filter((x) => x.montant <= -20000 && !(x.cat && types[x.cat] === 'hors'))) L.push(`${o.date} | ${anonyme(o.libelle)} | ${e(o.montant)} | ${nomCat(o)} | ${o.commentaire ? anonyme(o.commentaire) : ''}`);
+  }
+  const Q = {
+    evitables: 'Repère les dépenses dont on aurait pu se passer (achats impulsifs, petits montants répétés, livraisons, doublons), avec les opérations concernées et l’économie possible par mois.',
+    abonnements: 'Liste les abonnements, frais bancaires et prélèvements réguliers, leur coût annuel, et ceux qui méritent d’être renégociés ou résiliés.',
+    budgets: 'Compare les dépenses réelles aux budgets et propose des montants plus réalistes, catégorie par catégorie.',
+    tresorerie: 'Explique comment éviter le découvert compte tenu du débit différé des cartes et de la prévision (dates, montants, réserve à garder).',
+    projets: 'Dis-moi si les projets sont finançables avec ce rythme de dépenses, et comment les provisionner chaque mois.',
+  };
+  L.push('', '## Ce que j’attends de toi');
+  for (const q of questions) L.push(`- ${Q[q]}`);
+  L.push('- Réponds en français, de façon concrète et chiffrée, en citant les opérations. Termine par les 3 actions les plus utiles. Pose-moi des questions si une donnée n’est pas claire.');
+  return L.join('\n');
+}
+let texteAnalyseCache = '';
+async function preparerAnalyse() {
+  $('analyse-taille').textContent = 'Préparation…';
+  try {
+    texteAnalyseCache = await texteAnalyse();
+    $('analyse-taille').textContent = `Texte prêt : ${texteAnalyseCache.split('\n').length} lignes, ${Math.round(texteAnalyseCache.length / 1000)} 000 caractères environ.`;
+  } catch (e) { $('analyse-taille').textContent = e.message; }
+}
+$('btn-analyse').addEventListener('click', () => { $('dlg-analyse').showModal(); preparerAnalyse(); });
+$('analyse-periode').addEventListener('change', preparerAnalyse);
+document.querySelectorAll('.analyse-q').forEach((c) => c.addEventListener('change', preparerAnalyse));
+$('btn-analyse-copier').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(texteAnalyseCache); $('analyse-taille').textContent = 'Copié ✓ Colle-le dans une nouvelle conversation Claude.'; }
+  catch { $('analyse-taille').textContent = 'Copie impossible sur cet appareil : utilise « Envoyer à Claude ».'; }
+});
+$('btn-analyse-partager').addEventListener('click', async () => {
+  if (navigator.share) {
+    try { await navigator.share({ text: texteAnalyseCache }); } catch { /* partage annulé */ }
+  } else {
+    $('btn-analyse-copier').click();
+    window.open('https://claude.ai/new', '_blank');
+  }
 });
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});

@@ -1155,6 +1155,7 @@ function calculerPrevision() {
   const auj = aujourdhui();
   const m0 = moisCourant(), m1 = decalerMois(m0, 1);
   const horizon = `${m1}-10`;
+  const nb = joursDansMois(m0);
   const evenements = [];
   const ignores = new Set(d.prevision?.ignores || []);
 
@@ -1173,24 +1174,51 @@ function calculerPrevision() {
     if (r.jour <= 10) evenements.push({ date: dateDuMois(m1, r.jour), libelle: r.libelle, montant: r.montant, cle: r.cle, recurrence: r });
   }
 
-  // 2. Cartes à débit différé : jour habituel du prélèvement (5 par défaut)
-  const joursCarte = ops.filter((o) => o.carte && o.statut === 'BOOK' && o.date_compta !== o.date).map((o) => Number(o.date_compta.slice(8, 10)));
-  const jourCarte = joursCarte.length ? Math.round(mediane(joursCarte)) : 5;
-  const aDebiter = ops.filter((o) => o.statut === 'AVNR' && !o.epargne);
-  const anciens = aDebiter.filter((o) => o.date < `${m0}-01`).reduce((t, o) => t + o.montant, 0);
-  const ceMois = aDebiter.filter((o) => o.date >= `${m0}-01`).reduce((t, o) => t + o.montant, 0);
-  if (anciens) {
-    const date = dateDuMois(m0, jourCarte) > auj ? dateDuMois(m0, jourCarte) : lendemain(auj);
-    evenements.push({ date, libelle: 'Prélèvement des cartes (achats du mois dernier)', montant: anciens, carte: true });
+  // 2. Cartes à débit différé. Le relevé ne suit pas le mois civil : il s'arrête à une date fixe
+  //    (l'« arrêté ») et tout ce qui est acheté ensuite part au prélèvement suivant.
+  //    On déduit de l'historique le jour du prélèvement et le jour de l'arrêté.
+  const cartesDebitees = ops.filter((o) => o.carte && o.statut === 'BOOK' && o.date_compta && o.date_compta !== o.date && !o.epargne);
+  const jourCarte = cartesDebitees.length ? Math.round(mediane(cartesDebitees.map((o) => Number(o.date_compta.slice(8, 10))))) : 5;
+  let jourArrete = null;   // null = fin du mois
+  const prelevements = [...new Set(cartesDebitees.map((o) => o.date_compta))].filter((p) => p <= auj).sort();
+  if (prelevements.length) {
+    // L'achat le plus tardif couvert par le dernier prélèvement donne le jour de l'arrêté
+    // (à un ou deux jours près ; tout près de la fin du mois, on retient la fin du mois).
+    const dernier = prelevements[prelevements.length - 1];
+    const d = cartesDebitees.filter((o) => o.date_compta === dernier).reduce((m, o) => (o.date > m ? o.date : m), '');
+    const j = Number(d.slice(8, 10));
+    jourArrete = j >= joursDansMois(d.slice(0, 7)) - 1 ? null : j;
   }
-  // Reste du mois : rythme moyen des cartes sur les 3 derniers mois complets.
-  const prec = [1, 2, 3].map((n) => decalerMois(m0, -n));
-  const parMoisCarte = prec.map((m) => ops.filter((o) => o.carte && !o.epargne && o.montant < 0 && o.date.startsWith(m)).reduce((t, o) => t + o.montant, 0)).filter((v) => v);
-  const moyenneCarte = parMoisCarte.length ? parMoisCarte.reduce((t, v) => t + v, 0) / parMoisCarte.length : 0;
-  const nb = joursDansMois(m0), jour = Number(auj.slice(8, 10));
-  const estime = Math.round(moyenneCarte * (nb - jour) / nb);
-  if (ceMois || estime) {
-    evenements.push({ date: dateDuMois(m1, jourCarte), libelle: `Prélèvement des cartes (achats de ${nomMois(m0).split(' ')[0]}${estime ? `, dont ${fmt(-estime)} estimés` : ''})`, montant: ceMois + estime, carte: true });
+  const arreteAvant = (datePrelevement) => {   // arrêté du relevé prélevé à cette date : le mois précédent
+    const m = decalerMois(datePrelevement.slice(0, 7), -1);
+    return dateDuMois(m, jourArrete || 31);
+  };
+  // Rythme des cartes : moyenne par jour sur les 90 derniers jours (ou depuis le début de l'historique).
+  const debut90 = (() => { const j = new Date(`${auj}T12:00:00`); j.setDate(j.getDate() - 90); return isoLocal(j); })();
+  const achats90 = ops.filter((o) => o.carte && !o.epargne && o.montant < 0 && o.date > debut90 && o.date <= auj);
+  const premierAchat = achats90.reduce((m, o) => (o.date < m ? o.date : m), auj);
+  const joursObserves = Math.max(30, Math.round((Date.parse(auj) - Date.parse(premierAchat)) / 86400000));
+  const parJour = achats90.reduce((t, o) => t + o.montant, 0) / joursObserves;
+  const aDebiter = ops.filter((o) => o.statut === 'AVNR' && !o.epargne);
+  const nbJoursEntre = (a, b) => Math.max(0, Math.round((Date.parse(b) - Date.parse(a)) / 86400000));
+  let datePrel = dateDuMois(m0, jourCarte) > auj ? dateDuMois(m0, jourCarte) : dateDuMois(m1, jourCarte);
+  let arretePrecedent = null;
+  for (let k = 0; k < 2 && datePrel <= horizon; k++) {
+    const arrete = arreteAvant(datePrel);
+    const achats = aDebiter.filter((o) => o.date <= arrete && (!arretePrecedent || o.date > arretePrecedent));
+    const deja = achats.reduce((t, o) => t + o.montant, 0);
+    const restants = nbJoursEntre(arretePrecedent && arretePrecedent > auj ? arretePrecedent : auj, arrete);
+    const estime = Math.round(parJour * restants);
+    if (deja || estime) {
+      const fin = new Date(`${arrete}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
+      evenements.push({
+        date: datePrel, carte: true, montant: deja + estime,
+        libelle: `Prélèvement des cartes (achats jusqu’au ${fin}${estime ? `, dont ${fmt(-estime)} estimés` : ''})`,
+      });
+    }
+    arretePrecedent = arrete;
+    const suivant = decalerMois(datePrel.slice(0, 7), 1);
+    datePrel = dateDuMois(suivant, jourCarte);
   }
 
   // 3. Opérations prévues à la main

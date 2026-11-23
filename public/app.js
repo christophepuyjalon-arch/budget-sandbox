@@ -304,7 +304,7 @@ function dessinerAccueil(d, k) {
     texte = fixesAVenir
       ? `Charges fixes encore à passer : ${fmt(fixesAVenir)}. Reste ${quotidien}${parJour}.`
       : `Tout est libre pour le quotidien${parJour}.`;
-    if (k.titre) texte += ' Projection au rythme actuel.';
+    if (k.titre) texte += ' Projection au rythme habituel.';
   }
   $('par-jour').textContent = texte;
   $('par-jour').classList.toggle('negatif', libre < 0 && k.enCours);
@@ -1530,13 +1530,27 @@ function projeter(D) {
   const ecoules = Math.max(k.jour, 1);
   const joursAvant = Math.round((Date.parse(D) - Date.parse(auj)) / 86400000);
   const jourD = Number(D.slice(8, 10)), nbD = joursDansMois(mD);
+  // Rythme de chaque enveloppe : mélange du rythme du mois en cours et de la moyenne des
+  // 3 derniers mois complets. Le mois en cours pèse d'autant plus que le mois avance.
+  const ops = opsHistorique();
+  const prec = [1, 2, 3].map((n) => decalerMois(m0, -n));
+  const moisAvecDonnees = prec.filter((m) => ops.some((o) => o.date.startsWith(m)));
+  const poids = moisAvecDonnees.length ? k.jour / k.nbJours : 1;
+  const rythmeDe = (c) => {
+    const actuel = c.depense / ecoules;
+    if (poids >= 1) return actuel;
+    const total = ops.filter((o) => !o.projet && !o.epargne && o.cat === c.id && moisAvecDonnees.includes(o.date.slice(0, 7)))
+      .reduce((t, o) => t - o.montant, 0);
+    const habituel = total / moisAvecDonnees.reduce((t, m) => t + joursDansMois(m), 0);
+    return poids * actuel + (1 - poids) * habituel;
+  };
   const cats = k.cats.map((c) => {
     let depense;
     // Opérations prévues de cette catégorie, entre aujourd'hui (ou le 1er du mois de D) et D.
     const prevues = p.evenements.filter((e) => e.cat === c.id && e.date <= D && (mD === m0 ? e.date > auj : e.date >= `${mD}-01`))
       .reduce((t, e) => t - e.montant, 0);
     if (c.type === 'enveloppe') {
-      const rythme = c.depense / ecoules;   // rythme actuel du mois
+      const rythme = rythmeDe(c);
       depense = mD === m0 ? c.depense + rythme * joursAvant : rythme * jourD;
     } else if (c.type === 'fixe') {
       depense = (mD === m0 ? c.depense : 0) + prevues;
@@ -1586,7 +1600,7 @@ function majCurseur() {
   const avant = prevision.evenements.filter((e) => e.date > auj && e.date <= D);
   $('cur-info').innerHTML = `Projection au <b>${dateLongue(D)}</b> : solde prévu <b class="${solde < 0 ? 'negatif' : ''}">${fmt(solde)}</b>, `
     + `après ${avant.length} opération${avant.length > 1 ? 's' : ''} prévue${avant.length > 1 ? 's' : ''}. `
-    + 'Dépenses courantes au rythme actuel. <button id="cur-retour">Revenir à aujourd’hui</button>';
+    + 'Dépenses courantes au rythme du mois mêlé à celui des 3 derniers mois. <button id="cur-retour">Revenir à aujourd’hui</button>';
   $('cur-retour').addEventListener('click', () => { semaines = 0; majCurseur(); });
   $('prev-fin-titre').textContent = `Le ${dateCourteJ(D)}`;
   $('prev-fin').textContent = fmt(solde);

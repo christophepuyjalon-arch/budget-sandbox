@@ -30,7 +30,7 @@ Rien à installer sur ton ordinateur : tout se fait dans le navigateur.
 
 **1. Créer la base de données**
 
-Sur dash.cloudflare.com : **Stockage et bases de données**, puis **D1**, puis **Créer une base de données**. Nomme-la `budget` et valide. Copie son **ID** (Database ID) et remplace `REMPLACE_MOI` dans `wrangler.toml` (sur github.com : ouvre le fichier, crayon ✎, puis « Commit changes »). Cet ID n’est pas secret. Les tables se créent toutes seules au premier lancement.
+Sur dash.cloudflare.com : **Stockage et bases de données**, puis **D1**, puis **Créer une base de données**. Nomme-la `budget` et valide. Son **ID** (Database ID) est déjà dans `wrangler.toml` ; si tu recrées la base un jour, remplace-le (sur github.com : ouvre le fichier, crayon ✎, puis « Commit changes »). Cet ID n’est pas secret. Les tables se créent toutes seules au premier lancement.
 
 **2. Brancher le dépôt GitHub**
 

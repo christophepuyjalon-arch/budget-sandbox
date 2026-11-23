@@ -15,7 +15,7 @@ run_worker_first = ["/api/*", "/i/*", "/callback"]
 [[d1_databases]]
 binding = "DB"
 database_name = "budget"
-database_id = "REMPLACE_MOI"
+database_id = "84f7b480-43de-40c7-8baf-c280dc317716"
 
 [vars]
 # Identifiant de ton application Enable Banking (pas secret).

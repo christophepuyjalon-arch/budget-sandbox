@@ -170,6 +170,11 @@ async function router(req, env) {
     ]);
     return repondre({ ok: true });
   }
+  // Données brutes envoyées par la banque, pour ajuster les règles (administrateur seulement).
+  if ((m = p.match(/^\/api\/operations\/([^/]+)$/)) && req.method === 'GET') {
+    const o = await env.DB.prepare('SELECT brut FROM operations WHERE id = ?').bind(decodeURIComponent(m[1])).first();
+    return repondre({ brut: o?.brut ? JSON.parse(o.brut) : null });
+  }
   if (p === '/api/projets' && req.method === 'POST' || (m = p.match(/^\/api\/projets\/([^/]+)$/)) && req.method === 'PUT') {
     const pr = await req.json();
     const id = m ? decodeURIComponent(m[1]) : crypto.randomUUID();

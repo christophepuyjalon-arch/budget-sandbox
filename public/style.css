@@ -234,3 +234,7 @@ button.op { width: 100%; text-align: left; background: none; border: 0; border-b
 .form-projet { margin: 10px 0; padding-top: 6px; border-top: 1px solid var(--filet); }
 .secondaire.danger { color: var(--alerte); }
 small.inline { display: inline; }
+
+.fiche-technique { margin-top: 12px; font-size: 14px; color: var(--encre-2); }
+.fiche-technique summary { cursor: pointer; padding: 6px 0; }
+.fiche-technique pre { white-space: pre-wrap; word-break: break-all; font-size: 12px; background: var(--fond); padding: 8px; border-radius: 8px; max-height: 40vh; overflow: auto; }

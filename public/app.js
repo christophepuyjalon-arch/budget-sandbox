@@ -464,8 +464,18 @@ function ouvrirFiche(o) {
   const projets = d.projets.filter((p) => !p.archive || p.id === o.projet);
   $('fiche-projet').innerHTML = `<option value="">Aucun</option>` + projets.map((p) => `<option value="${echapper(p.id)}">${echapper(p.nom)}</option>`).join('');
   $('fiche-projet').value = o.projet || '';
+  $('fiche-technique').hidden = !moi?.admin;
+  $('fiche-technique').open = false;
+  $('fiche-brut').textContent = 'Chargement…';
   $('fiche').showModal();
 }
+$('fiche-technique').addEventListener('toggle', async () => {
+  if (!$('fiche-technique').open || !ficheOp) return;
+  try {
+    const { brut } = await api(`/api/operations/${encodeURIComponent(ficheOp.id)}`);
+    $('fiche-brut').textContent = JSON.stringify(brut, null, 2);
+  } catch (e) { $('fiche-brut').textContent = e.message; }
+});
 $('fiche-categories').addEventListener('click', (e) => {
   const b = e.target.closest('[data-c]');
   if (!b) return;

@@ -138,17 +138,24 @@ async function router(req, env) {
     const ops = [];
     if ('categorie' in corps) ops.push(env.DB.prepare('UPDATE operations SET categorie = ? WHERE id = ?').bind(corps.categorie || null, id));
     if ('projet' in corps) ops.push(env.DB.prepare('UPDATE operations SET projet = ? WHERE id = ?').bind(corps.projet ?? '', id));
+    if ('note' in corps) ops.push(env.DB.prepare('UPDATE operations SET note = ? WHERE id = ?').bind(String(corps.note || '').trim().slice(0, 200) || null, id));
     if (ops.length) await env.DB.batch(ops);
     return repondre({ ok: true });
   }
   // Règle « toujours classer ce commerçant dans… ». Ouvert à toute la famille.
   if (p === '/api/regles' && req.method === 'POST') {
-    const { motif, categorie } = await req.json();
-    const mo = normaliser(motif);
-    if (mo.length < 3 || !categorie) return repondre({ erreur: 'Motif trop court.' }, 400);
+    // Une règle peut fixer la catégorie, le commentaire, ou les deux. Ce qui n'est pas fourni
+    // reprend la valeur de la règle existante pour ce motif.
+    const corps = await req.json();
+    const mo = normaliser(corps.motif);
+    if (mo.length < 3) return repondre({ erreur: 'Motif trop court.' }, 400);
+    const ancienne = await env.DB.prepare("SELECT categorie, note FROM regles WHERE motif = ? AND source = 'perso'").bind(mo).first();
+    const categorie = 'categorie' in corps ? (corps.categorie || '') : (ancienne?.categorie || '');
+    const note = 'note' in corps ? (String(corps.note || '').trim().slice(0, 200) || null) : (ancienne?.note || null);
+    if (!categorie && !note) return repondre({ erreur: 'Rien à appliquer.' }, 400);
     await env.DB.batch([
       env.DB.prepare("DELETE FROM regles WHERE motif = ? AND source = 'perso'").bind(mo),
-      env.DB.prepare("INSERT INTO regles (id, motif, categorie, source, cree) VALUES (?, ?, ?, 'perso', ?)").bind(crypto.randomUUID(), mo, categorie, maintenant()),
+      env.DB.prepare("INSERT INTO regles (id, motif, categorie, note, source, cree) VALUES (?, ?, ?, ?, 'perso', ?)").bind(crypto.randomUUID(), mo, categorie, note, maintenant()),
     ]);
     return repondre({ ok: true, motif: mo });
   }
@@ -159,7 +166,7 @@ async function router(req, env) {
   // Opérations d'une période (pour l'analyse et les moyennes), en format compact.
   if (p === '/api/historique' && req.method === 'GET') {
     const depuis = /^\d{4}-\d{2}$/.test(url.searchParams.get('depuis') || '') ? url.searchParams.get('depuis') : maintenant().slice(0, 7);
-    const r = await env.DB.prepare(`SELECT o.compte, o.date, o.montant, o.libelle, o.contrepartie, o.categorie, o.projet
+    const r = await env.DB.prepare(`SELECT o.compte, o.date, o.montant, o.libelle, o.contrepartie, o.categorie, o.projet, o.note, o.carte
       FROM operations o JOIN comptes c ON c.id = o.compte WHERE c.masque = 0 AND o.date >= ? ORDER BY o.date`).bind(`${depuis}-01`).all();
     return repondre({ operations: r.results });
   }
@@ -386,14 +393,14 @@ async function etat(env, mois) {
     env.DB.prepare('SELECT id, banque, pays, expire, cree, statut, erreur FROM connexions ORDER BY cree'),
     // Le mois demandé, plus les 10 premiers jours du mois suivant : le prélèvement des cartes
     // à débit différé (le 4) couvre les achats du mois demandé.
-    env.DB.prepare(`SELECT o.id, o.compte, o.date, o.montant, o.libelle, o.contrepartie, o.statut, o.vu, o.categorie, o.projet, o.carte
+    env.DB.prepare(`SELECT o.id, o.compte, o.date, o.montant, o.libelle, o.contrepartie, o.statut, o.vu, o.categorie, o.projet, o.carte, o.note
       FROM operations o JOIN comptes c ON c.id = o.compte
       WHERE c.masque = 0 AND o.date BETWEEN ? AND ?
       ORDER BY o.date DESC, o.vu DESC, o.id`).bind(debut, `${suivant(mois)}-10`),
     env.DB.prepare('SELECT MIN(date) AS premier FROM operations'),
     env.DB.prepare("SELECT valeur FROM reglages WHERE cle = 'synchro'"),
     env.DB.prepare('SELECT id, nom, type, budget FROM categories ORDER BY ordre'),
-    env.DB.prepare('SELECT id, motif, categorie, source FROM regles'),
+    env.DB.prepare('SELECT id, motif, categorie, note, source FROM regles'),
     env.DB.prepare(`SELECT p.id, p.nom, p.budget, p.debut, p.fin, p.motif, p.archive,
       COALESCE((SELECT -SUM(o.montant) FROM operations o WHERE o.projet = p.id), 0) AS depense,
       (SELECT COUNT(*) FROM operations o WHERE o.projet = p.id) AS nombre

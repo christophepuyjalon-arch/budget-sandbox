@@ -242,3 +242,5 @@ small.inline { display: inline; }
 .op.adebiter .libelle::after { content: ' · à débiter'; color: var(--encre-2); font-size: 13px; }
 .ligne-carte { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: center; width: 100%; }
 .ligne-carte input { min-height: 40px; }
+
+.op .note { grid-column: 1 / -1; font-size: 14px; font-style: italic; color: var(--encre); }

@@ -133,16 +133,24 @@ let reglesPretes = null;
 function preparerRegles(d) {
   const cats = new Set(d.categories.map((c) => c.id));
   reglesPretes = d.regles
-    .filter((r) => cats.has(r.categorie) && r.motif.trim())
+    .filter((r) => (cats.has(r.categorie) || (!r.categorie && r.note)) && r.motif.trim())
     .map((r) => ({ ...r, re: new RegExp(`(^|[^A-Z])${echapperRegex(r.motif.trim())}S?(?=[^A-Z]|$)`) }))
     // Tes règles d'abord, puis le motif le plus long (le plus précis).
     .sort((a, b) => (a.source === 'perso' ? 0 : 1) - (b.source === 'perso' ? 0 : 1) || b.motif.trim().length - a.motif.trim().length);
 }
 
+// Commentaire : celui saisi sur l'opération, sinon celui d'une règle.
+function noteDe(o) {
+  if (o.note) return o.note;
+  const texte = normaliser(`${o.libelle} ${o.contrepartie || ''}`);
+  for (const r of reglesPretes) if (r.note && r.re.test(texte)) return r.note;
+  return null;
+}
+
 function categorieDe(o, d) {
   if (o.categorie && d.categories.some((c) => c.id === o.categorie)) return o.categorie;
   const texte = normaliser(`${o.libelle} ${o.contrepartie || ''}`);
-  for (const r of reglesPretes) if (r.re.test(texte)) return r.categorie;
+  for (const r of reglesPretes) if (r.categorie && r.re.test(texte)) return r.categorie;
   return o.montant > 0 && d.categories.some((c) => c.id === 'revenus') ? 'revenus' : null;
 }
 
@@ -194,7 +202,7 @@ function calculer(d) {
     const epargne = typeCompte(d, o.compte) === 'epargne';
     const projet = o.projet ? d.projets.find((p) => p.id === o.projet) : null;
     const cat = epargne ? null : categorieDe(o, d);
-    const x = { ...o, cat, projetNom: projet?.nom || null, epargne };
+    const x = { ...o, cat, projetNom: projet?.nom || null, epargne, commentaire: noteDe(o) };
     ops.push(x);
     if (epargne || projet) continue;
     if (cat) parCat[cat] -= o.montant;
@@ -449,6 +457,7 @@ function dessinerOperations(d, k) {
     html += `<button class="op ${o.statut === 'PDNG' ? 'encours' : o.statut === 'AVNR' ? 'adebiter' : ''}" data-op="${echapper(o.id)}">
       <span class="libelle">${echapper(o.libelle)}</span>
       <span class="montant ${o.montant > 0 ? 'positif' : ''}">${fmtSigne(o.montant)}</span>
+      ${o.commentaire ? `<span class="note">${echapper(o.commentaire)}</span>` : ''}
       <span class="puce-cat ${!o.cat && !o.projetNom && !o.epargne ? 'vide' : ''} ${o.categorie || (o.projet && o.projet !== '') ? 'manuel' : ''}">${echapper(etiquette)}</span>
       ${detail ? `<small>${echapper(detail)}</small>` : ''}</button>`;
   }
@@ -478,6 +487,7 @@ function ouvrirFiche(o) {
   $('fiche-categories').innerHTML = d.categories.map((c) => `<button type="button" role="radio" aria-checked="${c.id === ficheCat}" data-c="${echapper(c.id)}">${echapper(c.nom)}</button>`).join('');
   $('fiche-regle').hidden = true;
   $('fiche-motif').value = motifPropose(o);
+  $('fiche-note').value = o.commentaire || '';
   const projets = d.projets.filter((p) => !p.archive || p.id === o.projet);
   $('fiche-projet').innerHTML = `<option value="">Aucun</option>` + projets.map((p) => `<option value="${echapper(p.id)}">${echapper(p.nom)}</option>`).join('');
   $('fiche-projet').value = o.projet || '';
@@ -498,8 +508,16 @@ $('fiche-categories').addEventListener('click', (e) => {
   if (!b) return;
   ficheCat = b.dataset.c;
   $('fiche-categories').querySelectorAll('[data-c]').forEach((x) => x.setAttribute('aria-checked', String(x.dataset.c === ficheCat)));
-  $('fiche-regle').hidden = ficheCat === ficheOp.cat || !$('fiche-motif').value;
+  majBlocRegle();
 });
+$('fiche-note').addEventListener('input', majBlocRegle);
+function majBlocRegle() {
+  const cat = ficheCat !== ficheOp.cat;
+  const note = $('fiche-note').value.trim() !== (ficheOp.commentaire || '');
+  $('fiche-regle').hidden = !(cat || note) || !$('fiche-motif').value;
+  $('fiche-toujours-texte').textContent = cat && note ? 'Même catégorie et même commentaire pour les opérations contenant :'
+    : cat ? 'Toujours classer ainsi les opérations contenant :' : 'Ajouter ce commentaire aux opérations contenant :';
+}
 $('fiche').addEventListener('close', async () => {
   if ($('fiche').returnValue !== 'ok' || !ficheOp) return;
   const o = ficheOp;
@@ -507,12 +525,19 @@ $('fiche').addEventListener('close', async () => {
   if (ficheCat !== o.cat) corps.categorie = ficheCat;
   const projet = $('fiche-projet').value;
   if (projet !== (o.projet || '')) corps.projet = projet || (o.projet ? '' : null);
+  const note = $('fiche-note').value.trim();
+  const noteChange = note !== (o.commentaire || '');
+  if (noteChange) corps.note = note;
   try {
     const regle = !$('fiche-regle').hidden && $('fiche-toujours').checked && $('fiche-motif').value.trim().length >= 3;
     if (regle) {
-      await api('/api/regles', { method: 'POST', body: JSON.stringify({ motif: $('fiche-motif').value, categorie: ficheCat }) });
+      const r = { motif: $('fiche-motif').value };
+      if ('categorie' in corps) r.categorie = ficheCat;
+      if (noteChange) r.note = note;
+      await api('/api/regles', { method: 'POST', body: JSON.stringify(r) });
       // Avec une règle, l'opération suit la règle : pas besoin de choix manuel.
       if ('categorie' in corps) corps.categorie = null;
+      if (noteChange) corps.note = null;
     }
     if (Object.keys(corps).length) await api(`/api/operations/${encodeURIComponent(o.id)}`, { method: 'PATCH', body: JSON.stringify(corps) });
     await charger();
@@ -544,7 +569,7 @@ async function dessinerReglages() {
 
   // Règles personnelles
   const perso = (d.regles || []).filter((r) => r.source === 'perso');
-  $('liste-regles').innerHTML = perso.map((r) => `<li><div>${echapper(r.motif)}<small>→ ${echapper(nomCategorie(d, r.categorie))}</small></div>
+  $('liste-regles').innerHTML = perso.map((r) => `<li><div>${echapper(r.motif)}<small>${r.categorie ? `→ ${echapper(nomCategorie(d, r.categorie))}` : 'commentaire seulement'}${r.note ? ` · « ${echapper(r.note)} »` : ''}</small></div>
     <button class="action danger" data-regle="${echapper(r.id)}">Supprimer</button></li>`).join('') || '<li class="vide">Aucune règle personnelle pour l’instant.</li>';
 
   if (!moi?.admin) return;

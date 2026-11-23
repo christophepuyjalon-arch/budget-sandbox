@@ -219,7 +219,7 @@
 
   <section class="bloc">
     <h2>Règles de classement</h2>
-    <p class="discret-texte">Créées quand tu classes une opération avec « toujours classer ».</p>
+    <p class="discret-texte">Créées depuis la fiche d’une opération, avec « faire de même pour les opérations contenant… ».</p>
     <ul id="liste-regles" class="liste"></ul>
   </section>
 
@@ -239,8 +239,10 @@
     <p class="discret-texte" id="fiche-compte"></p>
     <h3 class="titre-section">Catégorie</h3>
     <div id="fiche-categories" class="puces" role="radiogroup" aria-label="Catégorie"></div>
+    <label for="fiche-note">Commentaire</label>
+    <input id="fiche-note" maxlength="200" placeholder="ex. Dentiste des enfants" autocomplete="off">
     <div id="fiche-regle" class="fiche-regle" hidden>
-      <label class="case"><input type="checkbox" id="fiche-toujours" checked> Toujours classer ainsi les opérations contenant :</label>
+      <label class="case"><input type="checkbox" id="fiche-toujours" checked> <span id="fiche-toujours-texte">Faire de même pour les opérations contenant :</span></label>
       <input id="fiche-motif" maxlength="60" aria-label="Motif">
     </div>
     <details id="fiche-technique" class="fiche-technique" hidden>

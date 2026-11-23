@@ -56,6 +56,11 @@ const EVOLUTIONS = [
       db.prepare("INSERT OR IGNORE INTO regles (id, motif, categorie, source, cree) SELECT ?, ?, ?, 'defaut', ? WHERE EXISTS (SELECT 1 FROM categories WHERE id = ?)")
         .bind(`d:${m}`, m, cat, new Date().toISOString(), cat))),
   ]],
+  // 5 : commentaires (sur une opération, ou ajoutés automatiquement par une règle).
+  [5, (db) => [
+    db.prepare('ALTER TABLE operations ADD COLUMN note TEXT'),
+    db.prepare('ALTER TABLE regles ADD COLUMN note TEXT'),
+  ]],
 ];
 
 let pret = null;

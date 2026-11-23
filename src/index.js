@@ -61,6 +61,23 @@ export function normaliser(t) {
   return String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, ' ').trim().slice(0, 60);
 }
 
+// Un paiement carte « à débiter » (AVNR) réapparaît comptabilisé (BOOK) le jour du débit,
+// peut-être avec un autre identifiant. Même carte, même montant, même date d'achat : c'est le même.
+// On garde la version comptabilisée, en lui reportant le classement fait à la main.
+async function fusionnerPaiementsCarte(env) {
+  const memes = `FROM operations a WHERE a.statut = 'AVNR' AND a.carte IS NOT NULL AND a.compte = b.compte
+    AND a.carte = b.carte AND a.montant = b.montant AND a.date = b.date`;
+  await env.DB.batch([
+    env.DB.prepare(`UPDATE operations AS b SET
+        categorie = COALESCE(b.categorie, (SELECT a.categorie ${memes} LIMIT 1)),
+        projet = COALESCE(b.projet, (SELECT a.projet ${memes} LIMIT 1))
+      WHERE b.statut = 'BOOK' AND b.carte IS NOT NULL AND EXISTS (SELECT 1 ${memes})`),
+    env.DB.prepare(`DELETE FROM operations WHERE statut = 'AVNR' AND carte IS NOT NULL AND EXISTS (
+      SELECT 1 FROM operations b WHERE b.statut = 'BOOK' AND b.compte = operations.compte AND b.carte = operations.carte
+        AND b.montant = operations.montant AND b.date = operations.date)`),
+  ]);
+}
+
 // Rattache aux projets qui ont un motif les opérations de leur période (sauf celles retirées à la main).
 async function rattacherProjets(env) {
   await env.DB.prepare(`UPDATE operations SET projet = (
@@ -351,7 +368,10 @@ export async function synchroniser(env, psu, seulementConnexion = null) {
       }
     }
   }
-  if (rapport.operations) await rattacherProjets(env);
+  if (rapport.operations) {
+    await fusionnerPaiementsCarte(env);
+    await rattacherProjets(env);
+  }
   await ecrireReglage(env, 'synchro', rapport).run();
   return rapport;
 }

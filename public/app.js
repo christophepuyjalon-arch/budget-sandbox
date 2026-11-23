@@ -134,7 +134,7 @@ function preparerRegles(d) {
   const cats = new Set(d.categories.map((c) => c.id));
   reglesPretes = d.regles
     .filter((r) => cats.has(r.categorie) && r.motif.trim())
-    .map((r) => ({ ...r, re: new RegExp(`(^|[^A-Z])${echapperRegex(r.motif.trim())}(?=[^A-Z]|$)`) }))
+    .map((r) => ({ ...r, re: new RegExp(`(^|[^A-Z])${echapperRegex(r.motif.trim())}S?(?=[^A-Z]|$)`) }))
     // Tes règles d'abord, puis le motif le plus long (le plus précis).
     .sort((a, b) => (a.source === 'perso' ? 0 : 1) - (b.source === 'perso' ? 0 : 1) || b.motif.trim().length - a.motif.trim().length);
 }
@@ -554,7 +554,7 @@ async function dessinerReglages() {
   // Comptes
   $('liste-comptes').innerHTML = d.comptes.map((c) => `<li class="compte-reglage" data-compte="${echapper(c.id)}"><div>
       <input class="compte-nom" value="${echapper(c.nom)}" aria-label="Nom du compte" maxlength="40">
-      <small>${echapper(c.banque)}${c.iban ? ` · ${echapper(c.iban)}` : ''}</small>
+      <small>${echapper(c.banque)}${c.iban ? ` · ${echapper(c.iban)}` : ''}${c.solde != null ? ` · solde ${fmt(c.solde)} (type ${echapper(c.solde_type || '?')}${c.solde_date ? `, ${echapper(c.solde_date)}` : ''})` : ''}</small>
       <div class="deux">
         <select class="compte-type" aria-label="Type">${[['courant', 'Compte courant'], ['epargne', 'Épargne']]
           .map(([v, t]) => `<option value="${v}" ${c.type === v ? 'selected' : ''}>${t}</option>`).join('')}</select>

@@ -52,6 +52,13 @@ export const REGLES_V3 = {
   shopping: ['FNAC.COM', 'LEROY', 'JOUE CLUB', 'KING JOUET', 'LA GRANDE RECRE'],
 };
 
+export const REGLES_V4 = {
+  banque: ['BPCE', 'BPCE ASSURANCES', 'BPCE VIE', 'NATIXIS'],
+  sante: ['DR', 'CENTRE MEDICAL', 'RADIOLOGIE', 'OSTEOPATHE', 'ORTHODONTISTE'],
+  loisirs: ['IBIS', 'NOVOTEL', 'MERCURE', 'NEWREST', 'BUFFET', 'TRAITEUR', 'CAFE', 'AMICALE'],
+  shopping: ['ETAM', 'JULES', 'CELIO', 'PROMOD', 'CAMAIEU', 'GALERIES LAFAYETTE', 'PRINTEMPS', 'COIFF', 'COIFFURE', 'COIFFE'],
+};
+
 // Projets : budget, période (mois de début et de fin), motif facultatif pour rattacher
 // automatiquement les opérations de la période (ex. DGFIP pour les impôts).
 export const PROJETS = [

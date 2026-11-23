@@ -184,7 +184,10 @@ export async function convertir(compteId, liste) {
     let montant = Math.abs(enCentimes(t.transaction_amount?.amount));
     if (t.credit_debit_indicator === 'DBIT') montant = -montant;
     else if (!t.credit_debit_indicator && enCentimes(t.transaction_amount?.amount) < 0) montant = -montant;
-    const date = (t.booking_date || t.value_date || t.transaction_date || '').slice(0, 10);
+    const dateBanque = (t.transaction_date || t.booking_date || t.value_date || '').slice(0, 10);
+    // Paiement carte à débit différé : la banque le date du jour du débit (le 5 du mois suivant),
+    // mais la date d'achat est dans le libellé (« FACT 290926 » = 29/09/2026).
+    const date = dateAchat(t.remittance_information, dateBanque) || dateBanque;
     if (!date) continue;
     const brutTexte = [].concat(t.remittance_information || []).filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
     const { texte: infos, carte } = nettoyerLibelle(brutTexte);
@@ -205,12 +208,22 @@ export async function convertir(compteId, liste) {
   return sortie;
 }
 
+// Date d'achat « FACT jjmmaa » : retenue seulement si elle précède de moins de 70 jours la date de la banque.
+export function dateAchat(infos, dateBanque) {
+  const m = [].concat(infos || []).join(' ').match(/\bFACT (\d{2})(\d{2})(\d{2})\b/);
+  if (!m || !dateBanque) return null;
+  const iso = `20${m[3]}-${m[2]}-${m[1]}`;
+  const ecart = (Date.parse(dateBanque) - Date.parse(iso)) / 86400000;
+  return Number.isFinite(ecart) && ecart >= 0 && ecart <= 70 ? iso : null;
+}
+
 // « SPEEDY000000296   342031******5 » → { texte: 'SPEEDY', carte: '5' }
 // Le numéro de carte masqué permet de savoir quelle carte a payé.
 export function nettoyerLibelle(texte) {
   let carte = null;
   let t = String(texte || '').replace(/\b\d{4,6}\*{3,}(\d{1,4})\b/, (_, fin) => { carte = fin; return ' '; });
-  t = t.replace(/([A-Za-z.])\d{5,}\b/g, '$1 ')   // codes collés au nom du commerçant
+  t = t.replace(/\bFACT \d{6}\b/, ' ')            // date d'achat, reprise dans la date de l'opération
+    .replace(/([A-Za-z.])\d{5,}\b/g, '$1 ')   // codes collés au nom du commerçant
     .replace(/\s+/g, ' ').trim();
   return { texte: t, carte };
 }

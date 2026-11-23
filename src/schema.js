@@ -2,7 +2,7 @@
 // Les tables sont créées automatiquement au premier appel : rien à faire à la main.
 // Pour une évolution future, ajouter une étape à EVOLUTIONS (elle s'exécutera une seule fois).
 
-import { CATEGORIES, REGLES, REGLES_V3, PROJETS } from './defauts.js';
+import { CATEGORIES, REGLES, REGLES_V3, REGLES_V4, PROJETS } from './defauts.js';
 
 const TABLES = [
   `CREATE TABLE IF NOT EXISTS appareils ( id TEXT PRIMARY KEY, nom TEXT NOT NULL, jeton TEXT NOT NULL UNIQUE, admin INTEGER NOT NULL DEFAULT 0, cree TEXT NOT NULL, vu TEXT NOT NULL )`,
@@ -46,6 +46,13 @@ const EVOLUTIONS = [
     db.prepare('ALTER TABLE operations ADD COLUMN carte TEXT'),
     db.prepare('UPDATE comptes SET synchro = NULL'),
     ...Object.entries(REGLES_V3).flatMap(([cat, motifs]) => motifs.map((m) =>
+      db.prepare("INSERT OR IGNORE INTO regles (id, motif, categorie, source, cree) SELECT ?, ?, ?, 'defaut', ? WHERE EXISTS (SELECT 1 FROM categories WHERE id = ?)")
+        .bind(`d:${m}`, m, cat, new Date().toISOString(), cat))),
+  ]],
+  // 4 : date d'achat des paiements carte (« FACT jjmmaa ») et nouvelles règles : réimport unique.
+  [4, (db) => [
+    db.prepare('UPDATE comptes SET synchro = NULL'),
+    ...Object.entries(REGLES_V4).flatMap(([cat, motifs]) => motifs.map((m) =>
       db.prepare("INSERT OR IGNORE INTO regles (id, motif, categorie, source, cree) SELECT ?, ?, ?, 'defaut', ? WHERE EXISTS (SELECT 1 FROM categories WHERE id = ?)")
         .bind(`d:${m}`, m, cat, new Date().toISOString(), cat))),
   ]],

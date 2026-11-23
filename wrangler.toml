@@ -2,6 +2,9 @@ name = "budget"
 main = "src/index.js"
 compatibility_date = "2026-09-01"
 
+# Adresse publique budget.<ton-compte>.workers.dev (activée à chaque déploiement).
+workers_dev = true
+
 # L'interface (dossier public) est servie directement par Cloudflare.
 # Les adresses d'invitation (/i/...) et de retour de la banque (/callback)
 # passent d'abord par le serveur.

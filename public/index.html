@@ -153,8 +153,8 @@
   <header class="entete"><h1>Opérations</h1></header>
   <div class="recherche" role="search">
     <input id="recherche" type="search" placeholder="Rechercher : libellé, commentaire, montant…" aria-label="Rechercher dans toutes les opérations" autocomplete="off">
-    <select id="recherche-cat" aria-label="Filtrer par catégorie"></select>
   </div>
+  <div id="puces-filtre" class="puces-filtre" role="group" aria-label="Filtrer par catégorie"></div>
   <div id="resultats" hidden>
     <p id="resultats-resume" class="resume-recherche"></p>
     <div id="resultats-liste" class="operations"></div>
@@ -164,10 +164,6 @@
     <button class="fleche mois-prec" aria-label="Mois précédent">‹</button>
     <h2 class="mois-nom">–</h2>
     <button class="fleche mois-suiv" aria-label="Mois suivant">›</button>
-  </div>
-  <div class="filtres" role="group" aria-label="Filtre">
-    <button data-filtre="toutes" class="actif">Toutes</button>
-    <button data-filtre="aclasser">À classer <span id="nb-a-classer"></span></button>
   </div>
   <div class="bilan">
     <div><span class="etiquette">Entrées</span><b id="entrees" class="positif">–</b></div>

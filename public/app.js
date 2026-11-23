@@ -277,7 +277,6 @@ function dessiner() {
   document.querySelectorAll('.mois-suiv').forEach((b) => { b.disabled = d.mois >= moisCourant(); });
   dessinerAccueil(d, calcul);
   dessinerOperations(d, calcul);
-  remplirChoixCategories();
   $('section-prevision').hidden = d.mois !== moisCourant() || !d.comptes.length;
   if (d.mois === moisCourant()) dessinerPrevision();
   if (!$('page-reglages').hidden) dessinerReglages();
@@ -455,15 +454,14 @@ $('btn-sync').addEventListener('click', async () => {
 
 // ---------- Opérations ----------
 function dessinerOperations(d, k) {
-  $('nb-a-classer').textContent = k.aClasser ? `(${k.aClasser})` : '';
-  document.querySelectorAll('[data-filtre]').forEach((b) => b.classList.toggle('actif', b.dataset.filtre === filtre));
+  dessinerPuces(d, k);
   let liste = k.ops;
   let titreFiltre = '';
-  if (filtre === 'aclasser') liste = liste.filter((o) => !o.cat && !o.projet && !o.epargne);
-  if (filtre === 'categorie') {
-    liste = filtreCat === 'differe' && k.cartesSansDetail ? k.debitsCartes
-      : filtreCat === 'revenus' ? liste.filter((o) => o.cat === 'revenus' && !o.projet) : liste.filter((o) => o.cat === filtreCat && !o.projet && !o.epargne);
-    titreFiltre = `<p class="filtre-actif">${echapper(nomCategorie(d, filtreCat))} <button data-filtre="toutes">× tout afficher</button></p>`;
+  if (filtre !== 'toutes') {
+    liste = filtre === 'categorie' && filtreCat === 'differe' && k.cartesSansDetail ? k.debitsCartes : liste.filter(passeFiltre);
+    const total = liste.reduce((t, o) => t + o.montant, 0);
+    titreFiltre = `<p class="filtre-actif"><span>${echapper(nomFiltre(d))} · ${liste.length} opération${liste.length > 1 ? 's' : ''} · <b>${fmtSigne(total)}</b></span>
+      <button data-filtre="toutes">× tout</button></p>`;
   }
   const entrees = k.ops.filter((o) => o.montant > 0).reduce((s, o) => s + o.montant, 0);
   const sorties = k.ops.filter((o) => o.montant < 0).reduce((s, o) => s + o.montant, 0);
@@ -498,9 +496,44 @@ function htmlOp(o, d, avecDate = false) {
     ${detail ? `<small>${echapper(detail)}</small>` : ''}</button>`;
 }
 
-document.querySelectorAll('.filtres [data-filtre]').forEach((b) => b.addEventListener('click', () => { filtre = b.dataset.filtre; dessiner(); }));
+// ---- puces de filtre (catégorie, à classer, projet), communes au mois et à la recherche
+function passeFiltre(o) {
+  if (filtre === 'aclasser') return !o.cat && !o.projet && !o.epargne;
+  if (filtre === 'projet') return o.projet === filtreCat;
+  if (filtre === 'categorie') return filtreCat === 'revenus' ? o.cat === 'revenus' && !o.projet : o.cat === filtreCat && !o.projet && !o.epargne;
+  return true;
+}
+function nomFiltre(d) {
+  if (filtre === 'aclasser') return 'À classer';
+  if (filtre === 'projet') return `Projet · ${d.projets.find((p) => p.id === filtreCat)?.nom || ''}`;
+  return nomCategorie(d, filtreCat);
+}
+const cleFiltre = () => (filtre === 'toutes' ? '' : filtre === 'aclasser' ? 'a' : `${filtre === 'projet' ? 'p' : 'c'}:${filtreCat}`);
+function choisirFiltre(cle) {
+  if (!cle) filtre = 'toutes';
+  else if (cle === 'a') filtre = 'aclasser';
+  else { filtre = cle.startsWith('p:') ? 'projet' : 'categorie'; filtreCat = cle.slice(2); }
+  if ($('recherche').value.trim()) rechercher(); else dessiner();
+}
+function dessinerPuces(d, k) {
+  // Montant du mois sur chaque puce : on voit d'un coup d'œil où part l'argent.
+  const parCat = {};
+  for (const o of k.ops) if (!o.projet && !o.epargne && o.cat) parCat[o.cat] = (parCat[o.cat] || 0) + o.montant;
+  const puces = [['', 'Toutes', null], ['a', `À classer${k.aClasser ? ` · ${k.aClasser}` : ''}`, null]];
+  for (const c of d.categories) {
+    const v = parCat[c.id] || 0;
+    if (!v && c.type !== 'enveloppe' && c.type !== 'fixe') continue;
+    puces.push([`c:${c.id}`, c.nom, v]);
+  }
+  for (const p of d.projets.filter((x) => !x.archive)) puces.push([`p:${p.id}`, `Projet · ${p.nom}`, null]);
+  const actif = cleFiltre();
+  $('puces-filtre').innerHTML = puces.map(([cle, nom, v]) => `<button data-cle="${echapper(cle)}" class="${cle === actif ? 'actif' : ''} ${cle === 'a' && k.aClasser ? 'alerte-puce' : ''}" aria-pressed="${cle === actif}">
+    ${echapper(nom)}${v ? ` <small>${fmtCourt(Math.abs(v))}</small>` : ''}</button>`).join('');
+  $('puces-filtre').querySelector('.actif')?.scrollIntoView({ block: 'nearest', inline: 'center' });
+}
+$('puces-filtre').addEventListener('click', (e) => { const b = e.target.closest('[data-cle]'); if (b) choisirFiltre(b.dataset.cle); });
 $('operations').addEventListener('click', (e) => {
-  if (e.target.closest('[data-filtre]')) { filtre = 'toutes'; dessiner(); return; }
+  if (e.target.closest('[data-filtre]')) { choisirFiltre(''); return; }
   const b = e.target.closest('[data-op]');
   if (b) ouvrirFiche(opsAffichees.get(b.dataset.op));
 });
@@ -894,20 +927,9 @@ function rafraichirVuesHistorique() {
 }
 
 // --- Recherche ---
-const rechercheActive = () => $('recherche').value.trim() || $('recherche-cat').value;
-function remplirChoixCategories() {
-  const d = donnees;
-  if (!d?.categories) return;
-  const actuel = $('recherche-cat').value;
-  $('recherche-cat').innerHTML = '<option value="">Toutes les catégories</option><option value="__aclasser">À classer</option>'
-    + d.categories.map((c) => `<option value="c:${echapper(c.id)}">${echapper(c.nom)}</option>`).join('')
-    + d.projets.map((p) => `<option value="p:${echapper(p.id)}">Projet · ${echapper(p.nom)}</option>`).join('');
-  $('recherche-cat').value = actuel;
-}
+const rechercheActive = () => $('recherche').value.trim();
 let minuterieRecherche = null;
 $('recherche').addEventListener('input', () => { clearTimeout(minuterieRecherche); minuterieRecherche = setTimeout(rechercher, 200); });
-$('recherche-cat').addEventListener('change', rechercher);
-$('recherche-cat').addEventListener('focus', remplirChoixCategories);
 
 async function rechercher() {
   const actif = rechercheActive();
@@ -919,18 +941,15 @@ async function rechercher() {
   const d = donnees;
   const q = normaliser($('recherche').value);
   const montantCherche = /^\d+([.,]\d{1,2})?$/.test(q) ? Math.round(Number(q.replace(',', '.')) * 100) : null;
-  const filtreC = $('recherche-cat').value;
   const res = opsHistorique().filter((o) => {
-    if (filtreC === '__aclasser' && (o.cat || o.projet || o.epargne)) return false;
-    if (filtreC.startsWith('c:') && (o.cat !== filtreC.slice(2) || o.projet)) return false;
-    if (filtreC.startsWith('p:') && o.projet !== filtreC.slice(2)) return false;
+    if (!passeFiltre(o)) return false;
     if (!q) return true;
     if (montantCherche !== null && Math.abs(o.montant) === montantCherche) return true;
     return normaliser(`${o.libelle} ${o.contrepartie || ''} ${o.commentaire || ''}`).includes(q);
   });
   const total = res.reduce((t, o) => t + o.montant, 0);
   $('resultats-resume').textContent = res.length
-    ? `${res.length} opération${res.length > 1 ? 's' : ''} · total ${fmtSigne(total)}`
+    ? `${res.length} opération${res.length > 1 ? 's' : ''} sur 12 mois${filtre !== 'toutes' ? ` (${nomFiltre(d)})` : ''} · total ${fmtSigne(total)}`
     : 'Aucune opération ne correspond.';
   opsAffichees.clear();
   let html = '', moisCourantRes = null;

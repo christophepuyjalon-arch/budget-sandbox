@@ -79,6 +79,13 @@
     <button class="fleche mois-suiv" aria-label="Mois suivant">›</button>
   </div>
 
+  <div id="curseur" class="curseur" hidden>
+    <button id="cur-prec" class="fleche" aria-label="Semaine précédente">‹</button>
+    <span id="cur-nom" aria-live="polite">Aujourd’hui</span>
+    <button id="cur-suiv" class="fleche" aria-label="Semaine suivante">›</button>
+  </div>
+  <p id="cur-info" class="cur-info" hidden></p>
+
   <section class="tableau" aria-label="Reste du mois">
     <div class="haut">
       <span class="lecture"><span class="etiquette" id="reste-titre">Reste à dépenser</span><small id="reste-detail"></small></span>

@@ -286,3 +286,10 @@ small.inline { display: inline; }
 
 .fiche-prevision { margin-top: 12px; }
 .fiche-prevision .secondaire { margin-top: 0; }
+
+/* Curseur dans le temps (semaine par semaine) */
+.curseur { display: flex; align-items: center; justify-content: center; gap: 6px; margin: -2px 0 8px; }
+.curseur #cur-nom { min-width: 190px; text-align: center; font-weight: 500; }
+.cur-info { margin: 0 0 10px; padding: 8px 12px; border-radius: 10px; background: var(--surface); border-left: 3px solid var(--serie-1); font-size: 14px; }
+.cur-info button { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; font: inherit; }
+body.projection #section-projets, body.projection #section-suivi, body.projection #lien-a-classer { display: none; }

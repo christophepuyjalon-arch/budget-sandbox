@@ -286,13 +286,28 @@ function dessiner() {
 // ---------- Aujourd'hui ----------
 function dessinerAccueil(d, k) {
   const reste = k.totalBudget - k.totalDepense;
-  $('reste-titre').textContent = k.passe ? 'Bilan du mois' : 'Reste à dépenser';
+  $('reste-titre').textContent = k.titre || (k.passe ? 'Bilan du mois' : 'Reste à dépenser');
   $('reste').textContent = fmt(k.passe ? k.totalBudget - k.totalDepense : reste);
   $('reste').classList.toggle('negatif', reste < 0);
   $('reste-detail').textContent = `${fmt(k.totalDepense)} dépensés sur ${fmt(k.totalBudget)}${k.enCours ? ` · jour ${k.jour}/${k.nbJours}` : ''}`;
-  $('par-jour').textContent = k.enCours && k.joursRestants > 0
-    ? `Courses, shopping et transports : ${fmt(k.resteEnveloppes / k.joursRestants)} par jour jusqu’à la fin du mois.`
-    : k.passe ? (reste >= 0 ? 'Budget tenu ✓' : 'Budget dépassé.') : '';
+  // Pilotage : du reste, on met de côté les charges fixes encore à passer ;
+  // ce qui reste est vraiment libre pour le quotidien.
+  const fixesAVenir = k.cats.filter((c) => c.type === 'fixe').reduce((t, c) => t + Math.max(c.budget - c.depense, 0), 0);
+  const libre = reste - fixesAVenir;
+  const noms = k.cats.filter((c) => c.type === 'enveloppe').map((c) => c.nom.toLowerCase());
+  const liste = noms.length > 1 ? `${noms.slice(0, -1).join(', ')}, ${noms[noms.length - 1]}` : noms[0] || '';
+  let texte = '';
+  if (k.passe) texte = reste >= 0 ? 'Budget tenu ✓' : 'Budget dépassé.';
+  else if (k.enCours) {
+    const quotidien = `${fmt(libre)} pour le quotidien${liste ? ` (${liste})` : ''}`;
+    const parJour = !k.titre && k.joursRestants > 1 && libre > 0 ? `, soit ${fmt(libre / k.joursRestants)} par jour` : '';
+    texte = fixesAVenir
+      ? `Charges fixes encore à passer : ${fmt(fixesAVenir)}. Reste ${quotidien}${parJour}.`
+      : `Tout est libre pour le quotidien${parJour}.`;
+    if (k.titre) texte += ' Projection au rythme actuel.';
+  }
+  $('par-jour').textContent = texte;
+  $('par-jour').classList.toggle('negatif', libre < 0 && k.enCours);
 
   $('lien-a-classer').hidden = !k.aClasser;
   $('lien-a-classer').textContent = `${k.aClasser} opération${k.aClasser > 1 ? 's' : ''} à classer ›`;
@@ -1132,6 +1147,7 @@ function detecterRecurrences(ops, d) {
     g.mois[m] = (g.mois[m] || 0) + o.montant;
     g.jours.push(Number(o.date_compta.slice(8, 10)));
     g.libelle = o.libelle;
+    g.cat = o.projet ? null : o.cat;
   }
   return Object.values(groupes)
     .filter((g) => Object.keys(g.mois).length >= 2 && (g.mois[prec[0]] || g.mois[prec[1]]))
@@ -1163,7 +1179,9 @@ function calculerPrevision() {
   const ops = opsHistorique();
   const auj = aujourdhui();
   const m0 = moisCourant(), m1 = decalerMois(m0, 1);
-  const horizon = `${m1}-10`;
+  // Jusqu'au 10 du mois suivant, et au moins 6 semaines (pour avancer semaine par semaine).
+  const dans6 = (() => { const j = new Date(`${auj}T12:00:00`); j.setDate(j.getDate() + 42); return isoLocal(j); })();
+  const horizon = dans6 > `${m1}-10` ? dans6 : `${m1}-10`;
   const nb = joursDansMois(m0);
   const evenements = [];
   const ignores = new Set(d.prevision?.ignores || []);
@@ -1179,7 +1197,8 @@ function calculerPrevision() {
     const tolerance = Math.max(100, Math.abs(p.montant) * 0.05);
     const ceMois = ops.filter((o) => courantsIds.has(o.compte) && !o.carte && (o.date_compta || o.date).startsWith(m0)
       && cleRecurrence(o) === p.base && Math.abs(o.montant - p.montant) <= tolerance).reduce((t, o) => t + o.montant, 0);
-    recurrences.push({ cle: `p:${p.id}`, libelle: p.libelle, montant: p.montant, jour: p.jour, ceMois, perso: p });
+    recurrences.push({ cle: `p:${p.id}`, libelle: p.libelle, montant: p.montant, jour: p.jour, ceMois, perso: p,
+      cat: categorieDe({ libelle: p.libelle, contrepartie: null, montant: p.montant, categorie: null }, d) });
   }
   for (const detecte of recurrences) {
     if (ignores.has(detecte.cle)) continue;
@@ -1189,9 +1208,12 @@ function calculerPrevision() {
       let date = dateDuMois(m0, r.jour);
       const retard = date <= auj;
       if (retard) date = lendemain(auj);
-      evenements.push({ date, libelle: r.libelle, montant: r.montant, cle: r.cle, retard, recurrence: r });
+      evenements.push({ date, libelle: r.libelle, montant: r.montant, cle: r.cle, retard, recurrence: r, cat: r.cat });
     }
-    if (r.jour <= 10) evenements.push({ date: dateDuMois(m1, r.jour), libelle: r.libelle, montant: r.montant, cle: r.cle, recurrence: r });
+    for (const m of [m1, decalerMois(m0, 2)]) {
+      const date = dateDuMois(m, r.jour);
+      if (date <= horizon) evenements.push({ date, libelle: r.libelle, montant: r.montant, cle: r.cle, recurrence: r, cat: r.cat });
+    }
   }
 
   // 2. Cartes à débit différé. Le relevé ne suit pas le mois civil : il s'arrête à une date fixe
@@ -1223,7 +1245,7 @@ function calculerPrevision() {
   const nbJoursEntre = (a, b) => Math.max(0, Math.round((Date.parse(b) - Date.parse(a)) / 86400000));
   let datePrel = dateDuMois(m0, jourCarte) > auj ? dateDuMois(m0, jourCarte) : dateDuMois(m1, jourCarte);
   let arretePrecedent = null;
-  for (let k = 0; k < 2 && datePrel <= horizon; k++) {
+  for (let k = 0; k < 3 && datePrel <= horizon; k++) {
     const arrete = arreteAvant(datePrel);
     const achats = aDebiter.filter((o) => o.date <= arrete && (!arretePrecedent || o.date > arretePrecedent));
     const deja = achats.reduce((t, o) => t + o.montant, 0);
@@ -1291,6 +1313,7 @@ async function dessinerPrevision() {
     },
     options: o,
   });
+  majCurseur();
   $('a-venir-titre').textContent = `À venir d’ici le ${Number(p.horizon.slice(8))} ${nomMois(p.horizon.slice(0, 7)).split(' ')[0]} (${p.evenements.length})`;
   $('a-venir').innerHTML = p.evenements.map((e, i) => `<li><button data-prevu="${i}">
       <span class="quand">${new Date(`${e.date}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</span>
@@ -1493,6 +1516,106 @@ $('btn-fiche-recurrente').addEventListener('click', async () => {
   });
   majFicheRecurrente();
 });
+
+// ---------- curseur dans le temps : avancer semaine par semaine ----------
+// Montre l'état prévu à une date future : solde, enveloppes au rythme actuel, charges fixes passées.
+let semaines = 0;
+const plusJours = (iso, n) => { const j = new Date(`${iso}T12:00:00`); j.setDate(j.getDate() + n); return isoLocal(j); };
+const dateLongue = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+const dateCourteJ = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+
+function projeter(D) {
+  const d = donnees, k = calcul, p = prevision;
+  const auj = aujourdhui(), m0 = moisCourant(), mD = D.slice(0, 7);
+  const ecoules = Math.max(k.jour, 1);
+  const joursAvant = Math.round((Date.parse(D) - Date.parse(auj)) / 86400000);
+  const jourD = Number(D.slice(8, 10)), nbD = joursDansMois(mD);
+  const cats = k.cats.map((c) => {
+    let depense;
+    // Opérations prévues de cette catégorie, entre aujourd'hui (ou le 1er du mois de D) et D.
+    const prevues = p.evenements.filter((e) => e.cat === c.id && e.date <= D && (mD === m0 ? e.date > auj : e.date >= `${mD}-01`))
+      .reduce((t, e) => t - e.montant, 0);
+    if (c.type === 'enveloppe') {
+      const rythme = c.depense / ecoules;   // rythme actuel du mois
+      depense = mD === m0 ? c.depense + rythme * joursAvant : rythme * jourD;
+    } else if (c.type === 'fixe') {
+      depense = (mD === m0 ? c.depense : 0) + prevues;
+    } else {
+      depense = mD === m0 ? c.depense : 0;
+    }
+    return { ...c, depense: Math.round(depense) };
+  });
+  const budgetes = cats.filter((c) => c.type === 'fixe' || c.type === 'enveloppe');
+  const totalDepense = budgetes.reduce((t, c) => t + Math.max(c.depense, 0), 0) + (mD === m0 ? Math.max(k.depenseAClasser, 0) : 0);
+  const resteEnveloppes = cats.filter((c) => c.type === 'enveloppe').reduce((t, c) => t + Math.max(c.budget - c.depense, 0), 0);
+  return {
+    ...k, cats, totalDepense, resteEnveloppes, enCours: true, passe: false,
+    jour: jourD, nbJours: nbD, fraction: jourD / nbD, joursRestants: nbD - jourD + 1, aClasser: 0, depenseAClasser: 0,
+    titre: `Reste prévu le ${dateCourteJ(D)}`, mois: mD,
+  };
+}
+
+function majCurseur() {
+  const enCours = donnees?.mois === moisCourant() && prevision;
+  $('curseur').hidden = !enCours;
+  if (!enCours) { semaines = 0; document.body.classList.remove('projection'); $('cur-info').hidden = true; return; }
+  const auj = aujourdhui();
+  const max = Math.floor((Date.parse(prevision.horizon) - Date.parse(auj)) / (7 * 86400000));
+  semaines = Math.min(semaines, max);
+  $('cur-prec').disabled = semaines <= 0;
+  $('cur-suiv').disabled = semaines >= max;
+  const D = plusJours(auj, 7 * semaines);
+  document.body.classList.toggle('projection', semaines > 0);
+  $('cur-info').hidden = semaines === 0;
+  if (semaines === 0) {
+    $('cur-nom').textContent = 'Aujourd’hui';
+    dessinerAccueil(donnees, calcul);
+    document.querySelectorAll('#page-accueil .mois-nom').forEach((e) => { e.textContent = nomMois(donnees.mois); });
+    $('prev-fin-titre').textContent = 'Fin du mois';
+    $('prev-fin').textContent = fmt(prevision.fin);
+    $('prev-fin').classList.toggle('negatif', prevision.fin < 0);
+    marquerDate(null);
+    return;
+  }
+  $('cur-nom').textContent = `Dans ${semaines} semaine${semaines > 1 ? 's' : ''} · ${dateCourteJ(D)}`;
+  const kp = projeter(D);
+  dessinerAccueil(donnees, kp);
+  document.querySelectorAll('#page-accueil .mois-nom').forEach((e) => { e.textContent = nomMois(kp.mois); });
+  const point = prevision.prevu.find(([j]) => j === D);
+  const solde = point ? point[1] : prevision.fin;
+  const avant = prevision.evenements.filter((e) => e.date > auj && e.date <= D);
+  $('cur-info').innerHTML = `Projection au <b>${dateLongue(D)}</b> : solde prévu <b class="${solde < 0 ? 'negatif' : ''}">${fmt(solde)}</b>, `
+    + `après ${avant.length} opération${avant.length > 1 ? 's' : ''} prévue${avant.length > 1 ? 's' : ''}. `
+    + 'Dépenses courantes au rythme actuel. <button id="cur-retour">Revenir à aujourd’hui</button>';
+  $('cur-retour').addEventListener('click', () => { semaines = 0; majCurseur(); });
+  $('prev-fin-titre').textContent = `Le ${dateCourteJ(D)}`;
+  $('prev-fin').textContent = fmt(solde);
+  $('prev-fin').classList.toggle('negatif', solde < 0);
+  marquerDate(D);
+}
+$('cur-prec').addEventListener('click', () => { semaines = Math.max(0, semaines - 1); majCurseur(); });
+$('cur-suiv').addEventListener('click', () => { semaines++; majCurseur(); });
+
+// Trait vertical sur la courbe de prévision, à la date du curseur.
+let dateMarquee = null;
+function marquerDate(D) {
+  dateMarquee = D;
+  graphs['g-prevision']?.update('none');
+}
+const pluginMarque = {
+  id: 'marque',
+  afterDatasetsDraw(chart) {
+    if (chart.canvas.id !== 'g-prevision' || !dateMarquee) return;
+    const i = chart.data.labels.indexOf(dateMarquee);
+    if (i < 0) return;
+    const x = chart.scales.x.getPixelForValue(i);
+    const { top, bottom } = chart.chartArea;
+    const c = chart.ctx;
+    c.save(); c.strokeStyle = couleur('--encre'); c.lineWidth = 1.5; c.setLineDash([3, 3]);
+    c.beginPath(); c.moveTo(x, top); c.lineTo(x, bottom); c.stroke(); c.restore();
+  },
+};
+(function enregistrerPlugin() { if (typeof Chart === 'undefined') { setTimeout(enregistrerPlugin, 200); return; } Chart.register(pluginMarque); })();
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 demarrer();

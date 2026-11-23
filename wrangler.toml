@@ -21,8 +21,9 @@ database_name = "budget"
 database_id = "84f7b480-43de-40c7-8baf-c280dc317716"
 
 [vars]
-# Identifiant de ton application Enable Banking (pas secret).
-EB_APP_ID = "21d719a6-32b5-462c-b849-c7ca4bbc4f68"
+# Identifiant de ton application Enable Banking de production (pas secret).
+# Sandbox (tests) : 21d719a6-32b5-462c-b849-c7ca4bbc4f68
+EB_APP_ID = "3070e112-d081-47f0-85fa-b08b26ad27ca"
 
 # Synchronisation automatique 2 fois par jour (heures UTC : 7h et 19h à Paris l'hiver, 8h et 20h l'été).
 # Les banques limitent à 4 consultations par jour sans toi : ne pas dépasser 4.

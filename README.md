@@ -1,8 +1,14 @@
 # Budget : comptes et enveloppes sur vos téléphones
 
-Budget récupère automatiquement les opérations de vos comptes bancaires (via Enable Banking) et les affiche sur vos téléphones : soldes, opérations du mois, entrées et sorties.
+Budget récupère automatiquement les opérations de vos comptes bancaires (via Enable Banking) et les affiche sur vos téléphones :
 
-À venir : enveloppes par catégorie avec anneaux « où j’en suis aujourd’hui », puis prévision du solde jusqu’à la fin du mois.
+- **Aujourd’hui** : reste à dépenser du mois, anneaux des dépenses courantes (le trait noir marque le rythme attendu à cette date), charges fixes, projets, solde disponible une fois les cartes à débit différé déduites.
+- **Opérations** : liste du mois. Toucher une opération permet de la classer ; « toujours classer ainsi » crée une règle pour les suivantes.
+- **Réglages** : budgets mensuels, projets (budget sur une période, rattachement automatique par motif), type de chaque compte (courant, carte à débit différé, épargne).
+
+Le classement se fait sur le téléphone à partir de règles (une liste de départ de commerçants courants, puis les tiennes). Les dépenses rattachées à un projet ne comptent pas dans les budgets du mois. Les comptes d’épargne n’entrent pas dans le budget.
+
+À venir : prévision du solde jusqu’à la fin du mois, bouton « Analyser avec Claude », alertes.
 
 ## Comment c’est organisé
 
@@ -13,6 +19,7 @@ src/index.js       le serveur : routes, synchronisation, données pour l’app
 src/banque.js      le dialogue avec Enable Banking (signature, comptes, opérations)
 src/acces.js       qui a le droit d’ouvrir l’app (activation, invitations)
 src/schema.js      la structure de la base de données (créée automatiquement)
+src/defauts.js     catégories, règles et projets de départ
 public/            l’app (page, styles, icônes, mode hors ligne)
 wrangler.toml      la configuration Cloudflare
 ```
@@ -60,6 +67,12 @@ https://budget.ton-compte.workers.dev/callback
 2. Saisis le code d’installation et ton prénom, puis **Activer**.
 3. Touche **Installer l’application** (ou menu ⋮, puis « Installer l’application »).
 4. Dans **Réglages**, puis **Connecter une banque** : choisis ta banque et donne ton accord sur son site. Tu reviens ensuite dans l’app avec tes comptes.
+
+## Premiers réglages après la connexion de la banque
+
+1. **Réglages, puis Comptes** : indique pour chaque carte « Carte à débit différé » (débitée le 4), et « Épargne » pour les livrets.
+2. **Réglages, puis Budgets du mois** et **Projets** : vérifie les montants préremplis.
+3. **Opérations, puis À classer** : classe ce qui reste. Coche « toujours classer ainsi » pour que l’app s’en souvienne.
 
 ## Inviter ta femme (iPhone)
 

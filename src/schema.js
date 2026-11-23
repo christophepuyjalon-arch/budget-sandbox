@@ -2,6 +2,8 @@
 // Les tables sont créées automatiquement au premier appel : rien à faire à la main.
 // Pour une évolution future, ajouter une étape à EVOLUTIONS (elle s'exécutera une seule fois).
 
+import { CATEGORIES, REGLES, PROJETS } from './defauts.js';
+
 const TABLES = [
   `CREATE TABLE IF NOT EXISTS appareils ( id TEXT PRIMARY KEY, nom TEXT NOT NULL, jeton TEXT NOT NULL UNIQUE, admin INTEGER NOT NULL DEFAULT 0, cree TEXT NOT NULL, vu TEXT NOT NULL )`,
   `CREATE TABLE IF NOT EXISTS invitations ( code TEXT PRIMARY KEY, nom TEXT NOT NULL, expire TEXT NOT NULL, restant INTEGER NOT NULL )`,
@@ -13,8 +15,32 @@ const TABLES = [
   `CREATE TABLE IF NOT EXISTS reglages ( cle TEXT PRIMARY KEY, valeur TEXT NOT NULL )`,
 ];
 
-// Exemple : [2, ['ALTER TABLE operations ADD COLUMN categorie TEXT']]
-const EVOLUTIONS = [];
+// Chaque évolution : [numéro de version, fonction qui renvoie les instructions SQL (préparées)].
+const EVOLUTIONS = [
+  // 2 : catégories, règles, projets, type de compte (courant, carte, épargne).
+  [2, (db) => [
+    db.prepare(`CREATE TABLE IF NOT EXISTS categories (
+      id TEXT PRIMARY KEY, nom TEXT NOT NULL, type TEXT NOT NULL, budget INTEGER NOT NULL DEFAULT 0, ordre INTEGER NOT NULL DEFAULT 0)`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS regles (
+      id TEXT PRIMARY KEY, motif TEXT NOT NULL, categorie TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'perso', cree TEXT NOT NULL)`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS projets (
+      id TEXT PRIMARY KEY, nom TEXT NOT NULL, budget INTEGER NOT NULL DEFAULT 0, debut TEXT NOT NULL, fin TEXT NOT NULL,
+      motif TEXT, archive INTEGER NOT NULL DEFAULT 0, cree TEXT NOT NULL)`),
+    // categorie : choix manuel (vide = classement automatique par les règles).
+    // projet : NULL = aucun, '' = retiré à la main d'un projet (ne plus le rattacher).
+    db.prepare('ALTER TABLE operations ADD COLUMN categorie TEXT'),
+    db.prepare('ALTER TABLE operations ADD COLUMN projet TEXT'),
+    db.prepare('CREATE INDEX IF NOT EXISTS operations_projet ON operations (projet)'),
+    db.prepare("ALTER TABLE comptes ADD COLUMN type TEXT NOT NULL DEFAULT 'courant'"),
+    db.prepare('ALTER TABLE comptes ADD COLUMN jour_debit INTEGER'),
+    ...CATEGORIES.map(([id, nom, type, budget], i) =>
+      db.prepare('INSERT OR IGNORE INTO categories (id, nom, type, budget, ordre) VALUES (?, ?, ?, ?, ?)').bind(id, nom, type, budget, i)),
+    ...Object.entries(REGLES).flatMap(([cat, motifs]) => motifs.map((m) =>
+      db.prepare("INSERT OR IGNORE INTO regles (id, motif, categorie, source, cree) VALUES (?, ?, ?, 'defaut', ?)").bind(`d:${m}`, m, cat, new Date().toISOString()))),
+    ...PROJETS.map(([id, nom, budget, debut, fin, motif]) =>
+      db.prepare('INSERT OR IGNORE INTO projets (id, nom, budget, debut, fin, motif, cree) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(id, nom, budget, debut, fin, motif, new Date().toISOString())),
+  ]],
+];
 
 let pret = null;
 
@@ -27,7 +53,7 @@ export function preparerBase(env) {
     for (const [v, instructions] of EVOLUTIONS) {
       if (v <= version) continue;
       await env.DB.batch([
-        ...instructions.map((s) => env.DB.prepare(s)),
+        ...instructions(env.DB),
         env.DB.prepare("INSERT INTO reglages (cle, valeur) VALUES ('version', ?) ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur").bind(String(v)),
       ]);
       version = v;

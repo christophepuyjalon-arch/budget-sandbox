@@ -147,3 +147,90 @@ select {
   width: 100%; min-height: 48px; padding: 10px 12px; border-radius: 10px;
   border: 1px solid var(--filet); background: var(--surface); font-size: 17px;
 }
+
+/* ===== Étape 3 : enveloppes, charges, projets, classement ===== */
+.par-jour { margin: 8px 0 0; font-size: 15px; color: var(--encre-2); }
+.chiffre.moyen { font-size: 34px; }
+.haut-petit { border-top: 2px solid var(--encre); }
+.titre-section { font-family: var(--titre); font-weight: 600; font-size: 19px; margin: 22px 0 8px; }
+.a-classer {
+  display: block; width: 100%; text-align: left; margin: 14px 0 0; padding: 12px 14px; border-radius: 10px;
+  border: 1px dashed var(--attention); background: var(--surface); color: var(--attention); font-weight: 500; min-height: 48px;
+}
+
+/* Anneaux */
+.anneaux { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.anneau {
+  position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 1px;
+  background: var(--surface); border: 0; border-radius: 12px; padding: 12px 8px 12px; min-width: 0;
+}
+.anneau svg { width: 96px; height: 96px; margin-bottom: 4px; }
+.anneau .piste { fill: none; stroke: var(--filet); stroke-width: 9; }
+.anneau .rempli { fill: none; stroke: var(--accent); stroke-width: 9; stroke-linecap: round; transition: stroke-dasharray .5s; }
+.anneau.avance .rempli { stroke: var(--attention); }
+.anneau.depasse .rempli { stroke: var(--alerte); }
+.anneau .repere { stroke: var(--encre); stroke-width: 2.5; stroke-linecap: round; }
+.anneau-pct { position: absolute; top: 46px; left: 0; right: 0; font-family: var(--titre); font-weight: 600; font-size: 22px; font-variant-numeric: tabular-nums; }
+.anneau-nom { font-family: var(--titre); font-weight: 600; font-size: 18px; }
+.anneau-montant { font-size: 14px; font-variant-numeric: tabular-nums; }
+.anneau-etat { font-size: 13px; color: var(--encre-2); }
+.anneau.avance .anneau-etat { color: var(--attention); }
+.anneau.depasse .anneau-etat { color: var(--alerte); }
+@media (prefers-reduced-motion: reduce) { .anneau .rempli { transition: none; } }
+
+/* Barres (charges fixes, projets) et lignes */
+.barres, .lignes { list-style: none; margin: 0; padding: 0; }
+.barres li > button, .lignes li > button {
+  width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--filet); padding: 10px 0; display: block;
+}
+.barre-haut { display: flex; justify-content: space-between; gap: 10px; }
+.barre-haut b { font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.barre-haut small { color: var(--encre-2); font-weight: 400; }
+.jauge { display: block; height: 6px; border-radius: 3px; background: var(--filet); margin: 6px 0 4px; overflow: hidden; }
+.jauge i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.barres .depasse .jauge i { background: var(--alerte); }
+.barres small { color: var(--encre-2); font-size: 13px; }
+.lignes li > button { display: flex; justify-content: space-between; gap: 10px; }
+.lignes b { font-weight: 500; font-variant-numeric: tabular-nums; }
+
+/* Liste des opérations */
+.filtres { display: flex; gap: 8px; margin: 4px 0 12px; }
+.filtres button { border: 1px solid var(--filet); background: none; border-radius: 999px; padding: 6px 14px; min-height: 40px; color: var(--encre-2); }
+.filtres button.actif { background: var(--encre); color: var(--fond); border-color: var(--encre); }
+.filtre-actif { display: flex; justify-content: space-between; align-items: center; font-weight: 500; margin: 4px 0; }
+.filtre-actif button { background: none; border: 0; color: var(--accent); padding: 8px 0; }
+button.op { width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--filet); }
+.puce-cat { grid-column: 1 / -1; justify-self: start; font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--fond); border: 1px solid var(--filet); color: var(--encre-2); }
+.puce-cat.vide { border-style: dashed; border-color: var(--attention); color: var(--attention); }
+.puce-cat.manuel::after { content: ' ✓'; }
+
+/* Fiche d'une opération */
+.fiche {
+  border: 0; border-radius: 16px 16px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px));
+  width: 100%; max-width: 640px; margin: auto auto 0; max-height: 90vh; overflow-y: auto;
+  background: var(--surface); color: var(--encre);
+}
+.fiche::backdrop { background: rgba(0, 0, 0, .45); }
+.fiche h2 { font-size: 22px; word-break: break-word; }
+.fiche-date { margin: 0; color: var(--encre-2); font-size: 14px; }
+.fiche-montant { font-family: var(--titre); font-weight: 600; font-size: 30px; margin: 2px 0; font-variant-numeric: tabular-nums; }
+.puces { display: flex; flex-wrap: wrap; gap: 8px; }
+.puces button { border: 1px solid var(--filet); background: var(--fond); border-radius: 999px; padding: 8px 12px; min-height: 40px; font-size: 15px; }
+.puces button[aria-checked="true"] { background: var(--accent); color: var(--fond); border-color: var(--accent); }
+.fiche-regle { margin-top: 12px; padding: 10px; border-radius: 10px; background: var(--fond); }
+.fiche-regle .case { margin-top: 0; }
+.case { display: flex; gap: 8px; align-items: flex-start; color: var(--encre); font-size: 15px; }
+.case input { width: 20px; height: 20px; min-height: 0; margin: 2px 0 0; flex: none; }
+.deux { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: end; }
+.deux.boutons { margin-top: 16px; }
+.deux.boutons button { margin-top: 0; }
+
+/* Réglages */
+.ligne-categorie { padding: 10px 0; border-bottom: 1px solid var(--filet); display: grid; gap: 6px; }
+.ligne-categorie .action { justify-self: start; background: none; border: 0; padding: 4px 0; font-size: 14px; color: var(--alerte); }
+.cat-budget-l, .jour-debit { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--encre); font-size: 15px; white-space: nowrap; }
+.cat-budget-l input, .jour-debit input { min-width: 0; }
+.compte-reglage > div { width: 100%; display: grid; gap: 6px; }
+.form-projet { margin: 10px 0; padding-top: 6px; border-top: 1px solid var(--filet); }
+.secondaire.danger { color: var(--alerte); }
+small.inline { display: inline; }

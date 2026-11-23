@@ -16,6 +16,7 @@ const PAUSE_SYNCHRO = 60000;     // délai minimum entre deux synchros manuelles
 
 const maintenant = () => new Date().toISOString();
 const jourISO = (t) => new Date(t).toISOString().slice(0, 10);
+const precedent = (m) => { const d = new Date(`${m}-15T12:00:00Z`); d.setUTCMonth(d.getUTCMonth() - 1); return d.toISOString().slice(0, 7); };
 
 export default {
   async fetch(req, env) {
@@ -52,6 +53,25 @@ async function lireReglage(env, cle) {
 function ecrireReglage(env, cle, valeur) {
   return env.DB.prepare('INSERT INTO reglages (cle, valeur) VALUES (?, ?) ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur')
     .bind(cle, JSON.stringify(valeur));
+}
+
+// Majuscules sans accents ni espaces multiples : la forme des libellés bancaires.
+export function normaliser(t) {
+  return String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, ' ').trim().slice(0, 60);
+}
+
+// Rattache aux projets qui ont un motif les opérations de leur période (sauf celles retirées à la main).
+async function rattacherProjets(env) {
+  await env.DB.prepare(`UPDATE operations SET projet = (
+      SELECT p.id FROM projets p
+      WHERE p.motif IS NOT NULL AND p.archive = 0
+        AND operations.date >= p.debut || '-01' AND operations.date <= p.fin || '-31'
+        AND (instr(upper(operations.libelle), p.motif) > 0 OR instr(upper(coalesce(operations.contrepartie, '')), p.motif) > 0)
+      ORDER BY length(p.motif) DESC LIMIT 1)
+    WHERE projet IS NULL AND EXISTS (
+      SELECT 1 FROM projets p WHERE p.motif IS NOT NULL AND p.archive = 0
+        AND operations.date >= p.debut || '-01' AND operations.date <= p.fin || '-31'
+        AND (instr(upper(operations.libelle), p.motif) > 0 OR instr(upper(coalesce(operations.contrepartie, '')), p.motif) > 0))`).run();
 }
 
 const psuDe = (req) => ({ ip: req.headers.get('cf-connecting-ip') || '', agent: req.headers.get('user-agent') || '' });
@@ -92,6 +112,40 @@ async function router(req, env) {
     if (derniere && Date.now() - Date.parse(derniere.date) < PAUSE_SYNCHRO) return repondre({ ...derniere, deja: true });
     return repondre(await synchroniser(env, psuDe(req)));
   }
+  let m;
+  // Classer une opération (catégorie et/ou projet). Ouvert à toute la famille.
+  if ((m = p.match(/^\/api\/operations\/([^/]+)$/)) && req.method === 'PATCH') {
+    const corps = await req.json();
+    const id = decodeURIComponent(m[1]);
+    const ops = [];
+    if ('categorie' in corps) ops.push(env.DB.prepare('UPDATE operations SET categorie = ? WHERE id = ?').bind(corps.categorie || null, id));
+    if ('projet' in corps) ops.push(env.DB.prepare('UPDATE operations SET projet = ? WHERE id = ?').bind(corps.projet ?? '', id));
+    if (ops.length) await env.DB.batch(ops);
+    return repondre({ ok: true });
+  }
+  // Règle « toujours classer ce commerçant dans… ». Ouvert à toute la famille.
+  if (p === '/api/regles' && req.method === 'POST') {
+    const { motif, categorie } = await req.json();
+    const mo = normaliser(motif);
+    if (mo.length < 3 || !categorie) return repondre({ erreur: 'Motif trop court.' }, 400);
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM regles WHERE motif = ? AND source = 'perso'").bind(mo),
+      env.DB.prepare("INSERT INTO regles (id, motif, categorie, source, cree) VALUES (?, ?, ?, 'perso', ?)").bind(crypto.randomUUID(), mo, categorie, maintenant()),
+    ]);
+    return repondre({ ok: true, motif: mo });
+  }
+  if ((m = p.match(/^\/api\/regles\/([^/]+)$/)) && req.method === 'DELETE') {
+    await env.DB.prepare('DELETE FROM regles WHERE id = ?').bind(decodeURIComponent(m[1])).run();
+    return repondre({ ok: true });
+  }
+  // Opérations d'une période (pour l'analyse et les moyennes), en format compact.
+  if (p === '/api/historique' && req.method === 'GET') {
+    const depuis = /^\d{4}-\d{2}$/.test(url.searchParams.get('depuis') || '') ? url.searchParams.get('depuis') : maintenant().slice(0, 7);
+    const r = await env.DB.prepare(`SELECT o.compte, o.date, o.montant, o.libelle, o.contrepartie, o.categorie, o.projet
+      FROM operations o JOIN comptes c ON c.id = o.compte WHERE c.masque = 0 AND o.date >= ? ORDER BY o.date`).bind(`${depuis}-01`).all();
+    return repondre({ operations: r.results });
+  }
+
   if (p === '/api/deconnexion' && req.method === 'POST') {
     await env.DB.prepare('DELETE FROM appareils WHERE id = ?').bind(moi.id).run();
     return json({ ok: true }, 200, cookieEfface(req));
@@ -101,6 +155,43 @@ async function router(req, env) {
   if (!moi.admin) return repondre({ erreur: 'Réservé à l’administrateur.' }, 403);
 
   if (p === '/callback') return retourBanque(req, env, url);
+  if (p === '/api/categories' && req.method === 'PUT') {
+    const { categories } = await req.json();
+    const TYPES = ['fixe', 'enveloppe', 'suivi', 'hors'];
+    const valides = (categories || []).filter((c) => c.nom && TYPES.includes(c.type));
+    const ids = valides.map((c) => c.id || crypto.randomUUID());
+    await env.DB.batch([
+      ...valides.map((c, i) => env.DB.prepare(`INSERT INTO categories (id, nom, type, budget, ordre) VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET nom = excluded.nom, type = excluded.type, budget = excluded.budget, ordre = excluded.ordre`)
+        .bind(ids[i], String(c.nom).slice(0, 40), c.type, Math.max(0, Math.round(Number(c.budget) || 0)), i)),
+      env.DB.prepare(`DELETE FROM categories WHERE id NOT IN (SELECT value FROM json_each(?))`).bind(JSON.stringify(ids)),
+      env.DB.prepare(`DELETE FROM regles WHERE categorie NOT IN (SELECT value FROM json_each(?))`).bind(JSON.stringify(ids)),
+      env.DB.prepare(`UPDATE operations SET categorie = NULL WHERE categorie IS NOT NULL AND categorie NOT IN (SELECT value FROM json_each(?))`).bind(JSON.stringify(ids)),
+    ]);
+    return repondre({ ok: true });
+  }
+  if (p === '/api/projets' && req.method === 'POST' || (m = p.match(/^\/api\/projets\/([^/]+)$/)) && req.method === 'PUT') {
+    const pr = await req.json();
+    const id = m ? decodeURIComponent(m[1]) : crypto.randomUUID();
+    const mois = (v) => (/^\d{4}-\d{2}$/.test(v || '') ? v : null);
+    if (!String(pr.nom || '').trim() || !mois(pr.debut) || !mois(pr.fin)) return repondre({ erreur: 'Nom et période obligatoires.' }, 400);
+    const motif = normaliser(pr.motif) || null;
+    await env.DB.prepare(`INSERT INTO projets (id, nom, budget, debut, fin, motif, archive, cree) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET nom = excluded.nom, budget = excluded.budget, debut = excluded.debut, fin = excluded.fin,
+        motif = excluded.motif, archive = excluded.archive`)
+      .bind(id, String(pr.nom).trim().slice(0, 60), Math.max(0, Math.round(Number(pr.budget) || 0)), mois(pr.debut),
+        pr.fin < pr.debut ? mois(pr.debut) : mois(pr.fin), motif, pr.archive ? 1 : 0, maintenant()).run();
+    await rattacherProjets(env);
+    return repondre({ ok: true, id });
+  }
+  if ((m = p.match(/^\/api\/projets\/([^/]+)$/)) && req.method === 'DELETE') {
+    const id = decodeURIComponent(m[1]);
+    await env.DB.batch([
+      env.DB.prepare('UPDATE operations SET projet = NULL WHERE projet = ?').bind(id),
+      env.DB.prepare('DELETE FROM projets WHERE id = ?').bind(id),
+    ]);
+    return repondre({ ok: true });
+  }
   if (p === '/api/banques' && req.method === 'GET') {
     return repondre({ banques: await listerBanques(env, (url.searchParams.get('pays') || 'FR').toUpperCase()) });
   }
@@ -112,7 +203,6 @@ async function router(req, env) {
     const adresse = await demarrerAutorisation(env, { nom, pays, duree: Number(duree) || null }, `${url.origin}/callback`, etatAleatoire);
     return repondre({ url: adresse });
   }
-  let m;
   if ((m = p.match(/^\/api\/connexions\/([^/]+)$/)) && req.method === 'DELETE') {
     const id = decodeURIComponent(m[1]);
     await supprimerSession(env, id);
@@ -124,8 +214,11 @@ async function router(req, env) {
     return repondre({ ok: true });
   }
   if ((m = p.match(/^\/api\/comptes\/([^/]+)$/)) && req.method === 'PATCH') {
-    const { masque } = await req.json();
-    await env.DB.prepare('UPDATE comptes SET masque = ? WHERE id = ?').bind(masque ? 1 : 0, decodeURIComponent(m[1])).run();
+    const c = await req.json();
+    const type = ['courant', 'carte', 'epargne'].includes(c.type) ? c.type : 'courant';
+    const jour = type === 'carte' ? Math.min(28, Math.max(1, Math.round(Number(c.jour_debit) || 4))) : null;
+    await env.DB.prepare('UPDATE comptes SET masque = ?, type = ?, jour_debit = ?, nom = COALESCE(?, nom) WHERE id = ?')
+      .bind(c.masque ? 1 : 0, type, jour, String(c.nom || '').trim().slice(0, 40) || null, decodeURIComponent(m[1])).run();
     return repondre({ ok: true });
   }
   if (p === '/api/invitations' && req.method === 'POST') {
@@ -246,6 +339,7 @@ export async function synchroniser(env, psu, seulementConnexion = null) {
       }
     }
   }
+  if (rapport.operations) await rattacherProjets(env);
   await ecrireReglage(env, 'synchro', rapport).run();
   return rapport;
 }
@@ -254,15 +348,23 @@ export async function synchroniser(env, psu, seulementConnexion = null) {
 async function etat(env, mois) {
   if (!/^\d{4}-\d{2}$/.test(mois || '')) mois = maintenant().slice(0, 7);
   const [debut, fin] = [`${mois}-01`, `${mois}-31`];
-  const [comptes, connexions, operations, bornes, synchro] = await env.DB.batch([
-    env.DB.prepare(`SELECT c.id, c.nom, c.iban, c.devise, c.solde, c.solde_type, c.solde_date, c.synchro, c.masque, c.connexion, x.banque
+  const [comptes, connexions, operations, bornes, synchro, categories, regles, projets] = await env.DB.batch([
+    env.DB.prepare(`SELECT c.id, c.nom, c.iban, c.devise, c.solde, c.solde_type, c.solde_date, c.synchro, c.masque, c.connexion, c.type, c.jour_debit, x.banque
       FROM comptes c JOIN connexions x ON x.id = c.connexion ORDER BY x.banque, c.nom`),
     env.DB.prepare('SELECT id, banque, pays, expire, cree, statut, erreur FROM connexions ORDER BY cree'),
-    env.DB.prepare(`SELECT o.id, o.compte, o.date, o.montant, o.libelle, o.contrepartie, o.statut, o.vu
+    // Le mois demandé, plus le mois précédent pour les cartes à débit différé (débitées le mois suivant).
+    env.DB.prepare(`SELECT o.id, o.compte, o.date, o.montant, o.libelle, o.contrepartie, o.statut, o.vu, o.categorie, o.projet
       FROM operations o JOIN comptes c ON c.id = o.compte
-      WHERE c.masque = 0 AND o.date BETWEEN ? AND ? ORDER BY o.date DESC, o.vu DESC, o.id`).bind(debut, fin),
+      WHERE c.masque = 0 AND (o.date BETWEEN ? AND ? OR (c.type = 'carte' AND o.date BETWEEN ? AND ?))
+      ORDER BY o.date DESC, o.vu DESC, o.id`).bind(debut, fin, `${precedent(mois)}-01`, `${precedent(mois)}-31`),
     env.DB.prepare('SELECT MIN(date) AS premier FROM operations'),
     env.DB.prepare("SELECT valeur FROM reglages WHERE cle = 'synchro'"),
+    env.DB.prepare('SELECT id, nom, type, budget FROM categories ORDER BY ordre'),
+    env.DB.prepare('SELECT id, motif, categorie, source FROM regles'),
+    env.DB.prepare(`SELECT p.id, p.nom, p.budget, p.debut, p.fin, p.motif, p.archive,
+      COALESCE((SELECT -SUM(o.montant) FROM operations o WHERE o.projet = p.id), 0) AS depense,
+      (SELECT COUNT(*) FROM operations o WHERE o.projet = p.id) AS nombre
+      FROM projets p ORDER BY p.archive, p.debut`),
   ]);
   return {
     mois,
@@ -271,5 +373,8 @@ async function etat(env, mois) {
     connexions: connexions.results,
     operations: operations.results,
     synchro: synchro.results[0] ? JSON.parse(synchro.results[0].valeur) : null,
+    categories: categories.results,
+    regles: regles.results,
+    projets: projets.results.map((p) => ({ ...p, archive: !!p.archive })),
   };
 }

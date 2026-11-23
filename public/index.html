@@ -62,6 +62,7 @@
 <!-- ================= Application ================= -->
 <main id="app" hidden>
 
+<!-- ===== Aujourd'hui ===== -->
 <div id="page-accueil" class="page">
   <header class="entete">
     <h1>Budget</h1>
@@ -72,31 +73,109 @@
   <p id="statut" class="statut" aria-live="polite"></p>
   <div id="alertes"></div>
 
-  <section class="tableau" aria-label="Soldes">
+  <div class="navmois">
+    <button class="fleche mois-prec" aria-label="Mois précédent">‹</button>
+    <h2 class="mois-nom">–</h2>
+    <button class="fleche mois-suiv" aria-label="Mois suivant">›</button>
+  </div>
+
+  <section class="tableau" aria-label="Reste du mois">
     <div class="haut">
-      <span class="lecture"><span class="etiquette">Solde total</span><small id="total-detail"></small></span>
-      <span class="chiffre" id="total">–</span>
+      <span class="lecture"><span class="etiquette" id="reste-titre">Reste à dépenser</span><small id="reste-detail"></small></span>
+      <span class="chiffre" id="reste">–</span>
+    </div>
+    <p id="par-jour" class="par-jour"></p>
+  </section>
+
+  <button id="lien-a-classer" class="a-classer" hidden></button>
+
+  <section aria-label="Enveloppes">
+    <h3 class="titre-section">Dépenses courantes</h3>
+    <div id="anneaux" class="anneaux"></div>
+  </section>
+
+  <section aria-label="Charges fixes">
+    <h3 class="titre-section">Charges fixes</h3>
+    <ul id="fixes" class="barres"></ul>
+  </section>
+
+  <section aria-label="Projets" id="section-projets">
+    <h3 class="titre-section">Projets</h3>
+    <ul id="projets" class="barres"></ul>
+  </section>
+
+  <section aria-label="Autres dépenses" id="section-suivi">
+    <h3 class="titre-section">Autres dépenses</h3>
+    <ul id="suivi" class="lignes"></ul>
+  </section>
+
+  <section aria-label="Comptes">
+    <h3 class="titre-section">Comptes</h3>
+    <div class="haut haut-petit">
+      <span class="lecture"><span class="etiquette">Disponible</span><small id="dispo-detail"></small></span>
+      <span class="chiffre moyen" id="dispo">–</span>
     </div>
     <ul id="comptes" class="comptes"></ul>
   </section>
-
-  <section aria-label="Opérations du mois">
-    <div class="navmois">
-      <button id="mois-prec" class="fleche" aria-label="Mois précédent">‹</button>
-      <h2 id="mois-nom">–</h2>
-      <button id="mois-suiv" class="fleche" aria-label="Mois suivant">›</button>
-    </div>
-    <div class="bilan">
-      <div><span class="etiquette">Entrées</span><b id="entrees" class="positif">–</b></div>
-      <div><span class="etiquette">Sorties</span><b id="sorties">–</b></div>
-      <div><span class="etiquette">Écart</span><b id="ecart">–</b></div>
-    </div>
-    <div id="operations" class="operations"></div>
-  </section>
 </div>
 
+<!-- ===== Opérations ===== -->
+<div id="page-operations" class="page" hidden>
+  <header class="entete"><h1>Opérations</h1></header>
+  <div class="navmois">
+    <button class="fleche mois-prec" aria-label="Mois précédent">‹</button>
+    <h2 class="mois-nom">–</h2>
+    <button class="fleche mois-suiv" aria-label="Mois suivant">›</button>
+  </div>
+  <div class="filtres" role="group" aria-label="Filtre">
+    <button data-filtre="toutes" class="actif">Toutes</button>
+    <button data-filtre="aclasser">À classer <span id="nb-a-classer"></span></button>
+  </div>
+  <div class="bilan">
+    <div><span class="etiquette">Entrées</span><b id="entrees" class="positif">–</b></div>
+    <div><span class="etiquette">Sorties</span><b id="sorties">–</b></div>
+    <div><span class="etiquette">Écart</span><b id="ecart">–</b></div>
+  </div>
+  <div id="operations" class="operations"></div>
+</div>
+
+<!-- ===== Réglages ===== -->
 <div id="page-reglages" class="page" hidden>
   <header class="entete"><h1>Réglages</h1></header>
+
+  <section class="bloc" id="bloc-budgets" hidden>
+    <h2>Budgets du mois</h2>
+    <p class="discret-texte">Charges fixes et dépenses courantes ont un budget mensuel. « Sans budget » : suivi seulement. « Hors budget » : jamais compté comme dépense (revenus, virements…).</p>
+    <div id="liste-categories"></div>
+    <button id="btn-ajout-categorie" class="secondaire">Ajouter une catégorie</button>
+    <button id="btn-enregistrer-categories" class="principal">Enregistrer les budgets</button>
+  </section>
+
+  <section class="bloc" id="bloc-projets" hidden>
+    <h2>Projets</h2>
+    <p class="discret-texte">Un budget pour une période (voyage, impôts, cadeaux…). Les dépenses rattachées à un projet ne comptent pas dans les budgets du mois. Avec un motif (ex. DGFIP), les opérations de la période sont rattachées automatiquement.</p>
+    <ul id="liste-projets" class="liste"></ul>
+    <form id="form-projet" class="form-projet" hidden>
+      <input type="hidden" id="projet-id">
+      <label for="projet-nom">Nom</label><input id="projet-nom" required maxlength="60">
+      <label for="projet-budget">Budget (€)</label><input id="projet-budget" type="number" inputmode="decimal" min="0" step="1" required>
+      <div class="deux">
+        <div><label for="projet-debut">Début</label><input id="projet-debut" type="month" required></div>
+        <div><label for="projet-fin">Fin</label><input id="projet-fin" type="month" required></div>
+      </div>
+      <label for="projet-motif">Motif automatique <small>(facultatif)</small></label><input id="projet-motif" maxlength="60" placeholder="ex. DGFIP">
+      <label class="case"><input type="checkbox" id="projet-archive"> Projet terminé (archivé)</label>
+      <button type="submit" class="principal">Enregistrer le projet</button>
+      <button type="button" id="btn-supprimer-projet" class="secondaire danger">Supprimer le projet</button>
+    </form>
+    <button id="btn-nouveau-projet" class="secondaire">Nouveau projet</button>
+  </section>
+
+  <section class="bloc" id="bloc-comptes" hidden>
+    <h2>Comptes</h2>
+    <p class="discret-texte">Indique le type de chaque compte. Les cartes à débit différé sont débitées une fois par mois sur le compte courant ; l’épargne n’entre pas dans le budget.</p>
+    <ul id="liste-comptes" class="liste"></ul>
+  </section>
 
   <section class="bloc" id="bloc-banque" hidden>
     <h2>Banque</h2>
@@ -136,16 +215,48 @@
   </section>
 
   <section class="bloc">
+    <h2>Règles de classement</h2>
+    <p class="discret-texte">Créées quand tu classes une opération avec « toujours classer ».</p>
+    <ul id="liste-regles" class="liste"></ul>
+  </section>
+
+  <section class="bloc">
     <h2>Ce téléphone</h2>
     <p id="moi-nom" class="discret-texte"></p>
     <button id="btn-deconnexion" class="secondaire">Désactiver ce téléphone</button>
   </section>
 </div>
 
+<!-- ===== Fiche d'une opération ===== -->
+<dialog id="fiche" class="fiche">
+  <form method="dialog" id="form-fiche">
+    <p class="fiche-date" id="fiche-date"></p>
+    <h2 id="fiche-libelle"></h2>
+    <p class="fiche-montant" id="fiche-montant"></p>
+    <p class="discret-texte" id="fiche-compte"></p>
+    <h3 class="titre-section">Catégorie</h3>
+    <div id="fiche-categories" class="puces" role="radiogroup" aria-label="Catégorie"></div>
+    <div id="fiche-regle" class="fiche-regle" hidden>
+      <label class="case"><input type="checkbox" id="fiche-toujours" checked> Toujours classer ainsi les opérations contenant :</label>
+      <input id="fiche-motif" maxlength="60" aria-label="Motif">
+    </div>
+    <label for="fiche-projet">Projet</label>
+    <select id="fiche-projet"></select>
+    <div class="deux boutons">
+      <button value="annuler" class="secondaire" formnovalidate>Annuler</button>
+      <button value="ok" id="fiche-ok" class="principal">Enregistrer</button>
+    </div>
+  </form>
+</dialog>
+
 <nav class="onglets" aria-label="Navigation">
   <button data-page="accueil" class="actif">
-    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 4a8 8 0 0 1 8 8" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/></svg>
     Aujourd’hui
+  </button>
+  <button data-page="operations">
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+    Opérations
   </button>
   <button data-page="reglages">
     <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>

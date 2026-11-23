@@ -82,7 +82,9 @@ export async function activer(env, code, nomPropose) {
   if (await trop(env)) return { erreur: 'Trop d’essais. Réessaie dans une heure.' };
   const brut = String(code || '').trim();
   let nom, admin;
-  if (env.CODE_INSTALLATION && brut && egal(brut, env.CODE_INSTALLATION)) {
+  // Majuscules, minuscules et espaces en trop ne comptent pas (claviers de téléphone).
+  const simplifier = (t) => String(t).trim().replace(/\s+/g, ' ').toLowerCase();
+  if (env.CODE_INSTALLATION && brut && egal(simplifier(brut), simplifier(env.CODE_INSTALLATION))) {
     nom = String(nomPropose || '').trim().slice(0, 40) || 'Administrateur';
     admin = 1;
   } else {

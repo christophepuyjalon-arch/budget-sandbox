@@ -127,6 +127,9 @@ $('btn-continuer').addEventListener('click', () => afficherApp());
 // Tout le classement se fait sur le téléphone : le serveur ne garde que les choix manuels.
 
 const normaliser = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
+// Pour comparer libellés et motifs, la ponctuation compte comme un espace :
+// « PPG*N LAB », « Aroma-Zone » et « AROMA ZONE » se ressemblent.
+const sansPonctuation = (t) => normaliser(t).replace(/[^A-Z0-9&]+/g, ' ').trim();
 const echapperRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 let reglesPretes = null;
@@ -134,7 +137,7 @@ function preparerRegles(d) {
   const cats = new Set(d.categories.map((c) => c.id));
   reglesPretes = d.regles
     .filter((r) => (cats.has(r.categorie) || (!r.categorie && r.note)) && r.motif.trim())
-    .map((r) => ({ ...r, re: new RegExp(`(^|[^A-Z])${echapperRegex(r.motif.trim())}S?(?=[^A-Z]|$)`) }))
+    .map((r) => ({ ...r, re: new RegExp(`(^|[^A-Z])${echapperRegex(sansPonctuation(r.motif))}S?(?=[^A-Z]|$)`) }))
     // Tes règles d'abord, puis le motif le plus long (le plus précis).
     .sort((a, b) => (a.source === 'perso' ? 0 : 1) - (b.source === 'perso' ? 0 : 1) || b.motif.trim().length - a.motif.trim().length);
 }
@@ -142,14 +145,14 @@ function preparerRegles(d) {
 // Commentaire : celui saisi sur l'opération, sinon celui d'une règle.
 function noteDe(o) {
   if (o.note) return o.note;
-  const texte = normaliser(`${o.libelle} ${o.contrepartie || ''}`);
+  const texte = sansPonctuation(`${o.libelle} ${o.contrepartie || ''}`);
   for (const r of reglesPretes) if (r.note && r.re.test(texte)) return r.note;
   return null;
 }
 
 function categorieDe(o, d) {
   if (o.categorie && d.categories.some((c) => c.id === o.categorie)) return o.categorie;
-  const texte = normaliser(`${o.libelle} ${o.contrepartie || ''}`);
+  const texte = sansPonctuation(`${o.libelle} ${o.contrepartie || ''}`);
   for (const r of reglesPretes) if (r.categorie && r.re.test(texte)) return r.categorie;
   return o.montant > 0 && d.categories.some((c) => c.id === 'revenus') ? 'revenus' : null;
 }
@@ -548,9 +551,8 @@ $('fiche').addEventListener('close', async () => {
       if ('categorie' in corps) r.categorie = ficheCat;
       if (noteChange) r.note = note;
       await api('/api/regles', { method: 'POST', body: JSON.stringify(r) });
-      // Avec une règle, l'opération suit la règle : pas besoin de choix manuel.
-      if ('categorie' in corps) corps.categorie = null;
-      if (noteChange) corps.note = null;
+      // Le choix est aussi gardé sur l'opération elle-même : elle reste classée même si
+      // le motif est modifié ensuite.
     }
     if (Object.keys(corps).length) await api(`/api/operations/${encodeURIComponent(o.id)}`, { method: 'PATCH', body: JSON.stringify(corps) });
     await charger();

@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#EEF1EE" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0F1512" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Budget">
+<title>Budget</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500&family=Barlow+Condensed:wght@500;600&display=swap">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<!-- ================= Activation du téléphone ================= -->
+<section id="activation" class="ecran-simple" hidden>
+  <h1>Budget</h1>
+
+  <div id="act-invitation" hidden>
+    <p class="grand">Bienvenue ! Un appui suffit pour activer ce téléphone.</p>
+    <button id="btn-activer-invitation" class="principal">Activer ce téléphone</button>
+  </div>
+
+  <form id="form-activation">
+    <p>Saisis le code d’invitation reçu, ou le code d’installation si tu es l’administrateur.</p>
+    <label for="code">Code</label>
+    <input id="code" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" required>
+    <label for="nom-appareil">Ton prénom <small>(seulement avec le code d’installation)</small></label>
+    <input id="nom-appareil" autocomplete="given-name" maxlength="40">
+    <button type="submit" class="principal">Activer</button>
+  </form>
+  <p id="erreur-activation" class="erreur" role="alert"></p>
+</section>
+
+<!-- ================= Guide d'installation (après activation hors de l'app) ================= -->
+<section id="installer" class="ecran-simple" hidden>
+  <h1>C’est activé ✓</h1>
+  <div id="guide-ios" hidden>
+    <p class="grand">Dernière étape : mettre Budget sur l’écran d’accueil.</p>
+    <ol class="etapes">
+      <li>Touche le bouton <b>Partager</b> <span class="icone-partager" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M12 3v12M7 8l5-5 5 5M5 12v8h14v-8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span> en bas de Safari.</li>
+      <li>Fais défiler et choisis <b>Sur l’écran d’accueil</b>.</li>
+      <li>Touche <b>Ajouter</b>, puis ouvre Budget depuis son icône.</li>
+    </ol>
+    <p class="discret-texte">Si l’app te redemande un code, saisis le même code d’invitation : il reste valable 48 heures.</p>
+  </div>
+  <div id="guide-android" hidden>
+    <p class="grand">Dernière étape : installer Budget sur ton téléphone.</p>
+    <button id="btn-installer" class="principal" hidden>Installer l’application</button>
+    <p id="guide-android-menu">Menu <b>⋮</b> de Chrome, puis <b>Installer l’application</b> (ou « Ajouter à l’écran d’accueil »).</p>
+  </div>
+  <button id="btn-continuer" class="secondaire">Continuer dans le navigateur</button>
+</section>
+
+<!-- ================= Application ================= -->
+<main id="app" hidden>
+
+<div id="page-accueil" class="page">
+  <header class="entete">
+    <h1>Budget</h1>
+    <button id="btn-sync" class="discret" aria-label="Synchroniser">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.9-3.9M4 5v4h4M4 13a8 8 0 0 0 14.9 3.9M20 19v-4h-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </header>
+  <p id="statut" class="statut" aria-live="polite"></p>
+  <div id="alertes"></div>
+
+  <section class="tableau" aria-label="Soldes">
+    <div class="haut">
+      <span class="lecture"><span class="etiquette">Solde total</span><small id="total-detail"></small></span>
+      <span class="chiffre" id="total">–</span>
+    </div>
+    <ul id="comptes" class="comptes"></ul>
+  </section>
+
+  <section aria-label="Opérations du mois">
+    <div class="navmois">
+      <button id="mois-prec" class="fleche" aria-label="Mois précédent">‹</button>
+      <h2 id="mois-nom">–</h2>
+      <button id="mois-suiv" class="fleche" aria-label="Mois suivant">›</button>
+    </div>
+    <div class="bilan">
+      <div><span class="etiquette">Entrées</span><b id="entrees" class="positif">–</b></div>
+      <div><span class="etiquette">Sorties</span><b id="sorties">–</b></div>
+      <div><span class="etiquette">Écart</span><b id="ecart">–</b></div>
+    </div>
+    <div id="operations" class="operations"></div>
+  </section>
+</div>
+
+<div id="page-reglages" class="page" hidden>
+  <header class="entete"><h1>Réglages</h1></header>
+
+  <section class="bloc" id="bloc-banque" hidden>
+    <h2>Banque</h2>
+    <ul id="connexions" class="liste"></ul>
+    <button id="btn-connecter" class="principal">Connecter une banque</button>
+    <div id="choix-banque" hidden>
+      <label for="pays-banque">Pays</label>
+      <select id="pays-banque">
+        <option value="FR" selected>France</option>
+        <option value="FI">Finlande (banques de test du sandbox)</option>
+        <option value="DE">Allemagne</option>
+        <option value="ES">Espagne</option>
+        <option value="BE">Belgique</option>
+      </select>
+      <label for="cherche-banque">Cherche ta banque</label>
+      <input id="cherche-banque" type="search" placeholder="Caisse d’Épargne…" autocomplete="off">
+      <ul id="banques" class="liste choix"></ul>
+    </div>
+  </section>
+
+  <section class="bloc" id="bloc-famille" hidden>
+    <h2>Famille</h2>
+    <p class="discret-texte">Téléphones qui ont accès à Budget.</p>
+    <ul id="appareils" class="liste"></ul>
+    <form id="form-invitation" class="ligne-form">
+      <label for="nom-invite" class="masque-visuel">Prénom de la personne invitée</label>
+      <input id="nom-invite" placeholder="Prénom" maxlength="40" required>
+      <button type="submit" class="principal">Inviter</button>
+    </form>
+    <div id="invitation" class="invitation" hidden>
+      <p>Fais scanner ce code avec l’appareil photo de son téléphone :</p>
+      <div id="qr" class="qr"></div>
+      <p>Ou envoie-lui le lien. Code de secours : <b id="code-invitation" class="code"></b></p>
+      <button id="btn-partager" class="secondaire">Envoyer le lien</button>
+      <p class="discret-texte" id="expire-invitation"></p>
+    </div>
+  </section>
+
+  <section class="bloc">
+    <h2>Ce téléphone</h2>
+    <p id="moi-nom" class="discret-texte"></p>
+    <button id="btn-deconnexion" class="secondaire">Désactiver ce téléphone</button>
+  </section>
+</div>
+
+<nav class="onglets" aria-label="Navigation">
+  <button data-page="accueil" class="actif">
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+    Aujourd’hui
+  </button>
+  <button data-page="reglages">
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+    Réglages
+  </button>
+</nav>
+</main>
+
+<script src="/vendor/qrcode.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

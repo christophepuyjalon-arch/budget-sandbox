@@ -1,0 +1,149 @@
+:root {
+  color-scheme: light;
+  --fond: #EEF1EE;
+  --surface: #FFFFFF;
+  --encre: #15201A;
+  --encre-2: #56635B;
+  --filet: #D6DDD8;
+  --accent: #1C6B47;
+  --positif: #1C6B47;
+  --alerte: #B4302A;
+  --attention: #9A6400;
+  --titre: 'Barlow Condensed', 'Roboto Condensed', 'Arial Narrow', sans-serif;
+  --texte: 'Barlow', Roboto, system-ui, sans-serif;
+  box-sizing: border-box;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --fond: #0F1512; --surface: #18211C; --encre: #E3EBE6; --encre-2: #95A39A;
+    --filet: #28352E; --accent: #5CC492; --positif: #5CC492; --alerte: #F07A73; --attention: #E3B04B;
+  }
+}
+*, *::before, *::after { box-sizing: inherit; }
+[hidden] { display: none !important; }
+body {
+  margin: 0; background: var(--fond); color: var(--encre);
+  font: 400 16px/1.5 var(--texte); -webkit-tap-highlight-color: transparent;
+  padding-top: env(safe-area-inset-top, 0px);
+}
+main, .ecran-simple { max-width: 640px; margin: 0 auto; padding: 0 16px; }
+main { padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+.ecran-simple { padding-top: 32px; padding-bottom: 40px; }
+h1, h2 { font-family: var(--titre); font-weight: 600; margin: 0; letter-spacing: .01em; }
+h1 { font-size: 30px; }
+h2 { font-size: 21px; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.masque-visuel { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+/* Boutons et formulaires */
+.principal, .secondaire {
+  display: block; width: 100%; min-height: 48px; border-radius: 10px; padding: 10px 16px;
+  font-weight: 500; margin-top: 12px;
+}
+.principal { background: var(--accent); color: var(--fond); border: 0; }
+.secondaire { background: none; color: var(--encre); border: 1px solid var(--filet); }
+.principal:disabled { opacity: .5; }
+label { display: block; margin: 14px 0 4px; font-size: 14px; color: var(--encre-2); }
+input {
+  width: 100%; min-height: 48px; padding: 10px 12px; border-radius: 10px;
+  border: 1px solid var(--filet); background: var(--surface); font-size: 17px;
+}
+#code { font-family: ui-monospace, monospace; letter-spacing: .08em; text-transform: uppercase; }
+.erreur { color: var(--alerte); min-height: 1.5em; }
+.grand { font-size: 19px; margin: 18px 0 4px; }
+.discret-texte { color: var(--encre-2); font-size: 14px; }
+.etapes { padding-left: 22px; font-size: 17px; }
+.etapes li { margin: 10px 0; }
+.icone-partager { display: inline-flex; vertical-align: -4px; color: #0A84FF; }
+#act-invitation + #form-activation { margin-top: 36px; }
+
+/* En-tête */
+.entete { display: flex; align-items: center; justify-content: space-between; padding: 14px 0 2px; }
+.discret { background: none; border: 0; padding: 10px; margin-right: -10px; color: var(--encre-2); border-radius: 50%; }
+.discret.tourne svg { animation: tour 1s linear infinite; }
+@keyframes tour { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .discret.tourne svg { animation: none; } }
+.statut { margin: 0 0 12px; font-size: 14px; color: var(--encre-2); min-height: 21px; }
+
+/* Alertes (autorisation bancaire à renouveler…) */
+.alerte {
+  border-left: 3px solid var(--attention); background: var(--surface); padding: 10px 12px;
+  border-radius: 0 8px 8px 0; margin-bottom: 12px; font-size: 15px;
+}
+.alerte.grave { border-color: var(--alerte); }
+.alerte button { background: none; border: 0; padding: 0; color: var(--accent); font-weight: 500; text-decoration: underline; }
+
+/* Soldes */
+.tableau { border-top: 2px solid var(--encre); margin-bottom: 22px; }
+.haut { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; column-gap: 14px; padding: 10px 0 12px; border-bottom: 1px solid var(--filet); }
+.etiquette { display: block; font-family: var(--titre); font-weight: 500; font-size: 17px; color: var(--encre-2); }
+.lecture small { display: block; font-size: 13px; color: var(--encre-2); }
+.chiffre { font-family: var(--titre); font-weight: 600; font-size: 48px; line-height: .95; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.comptes { list-style: none; margin: 0; padding: 0; }
+.comptes li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--filet); }
+.comptes .nom { min-width: 0; }
+.comptes .nom small { display: block; color: var(--encre-2); font-size: 13px; }
+.comptes .montant { font-variant-numeric: tabular-nums; font-weight: 500; white-space: nowrap; }
+.vide { color: var(--encre-2); padding: 14px 0; }
+
+/* Mois */
+.navmois { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; }
+.navmois h2 { flex: 1; text-align: center; }
+.navmois h2::first-letter { text-transform: uppercase; }
+.fleche { background: none; border: 0; font-size: 28px; line-height: 1; padding: 4px 14px; color: var(--encre-2); border-radius: 6px; min-height: 44px; }
+.fleche:disabled { opacity: .25; cursor: default; }
+.bilan { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+.bilan > div { background: var(--surface); border-radius: 10px; padding: 8px 10px; min-width: 0; }
+.bilan .etiquette { font-size: 14px; }
+.bilan b { display: block; font-variant-numeric: tabular-nums; font-weight: 500; font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.positif { color: var(--positif); }
+.negatif { color: var(--alerte); }
+
+/* Opérations */
+.jour { margin: 16px 0 4px; font-size: 14px; color: var(--encre-2); }
+.jour::first-letter { text-transform: uppercase; }
+.op { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 9px 0; border-bottom: 1px solid var(--filet); }
+.op .libelle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.op .montant { font-variant-numeric: tabular-nums; font-weight: 500; text-align: right; white-space: nowrap; }
+.op small { grid-column: 1 / -1; color: var(--encre-2); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.op.encours .libelle::after { content: ' · en cours'; color: var(--attention); font-size: 13px; }
+
+/* Réglages */
+.bloc { background: var(--surface); border-radius: 12px; padding: 14px 14px 16px; margin: 14px 0; }
+.liste { list-style: none; margin: 8px 0 0; padding: 0; }
+.liste li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--filet); }
+.liste li:last-child { border-bottom: 0; }
+.liste li > div { min-width: 0; }
+.liste small { display: block; color: var(--encre-2); font-size: 13px; }
+.liste .action { background: none; border: 1px solid var(--filet); border-radius: 8px; padding: 6px 10px; font-size: 14px; flex: none; min-height: 36px; }
+.liste .action.danger { color: var(--alerte); }
+.choix { max-height: 50vh; overflow-y: auto; }
+.choix li { padding: 0; }
+.choix button { width: 100%; text-align: left; background: none; border: 0; padding: 12px 4px; display: flex; align-items: center; gap: 10px; }
+.choix img { width: 28px; height: 28px; object-fit: contain; border-radius: 4px; background: #fff; }
+.ligne-form { display: flex; gap: 8px; margin-top: 12px; }
+.ligne-form input { flex: 1; min-width: 0; }
+.ligne-form .principal { width: auto; margin-top: 0; }
+.invitation { margin-top: 14px; text-align: center; }
+.qr { background: #fff; padding: 12px; border-radius: 10px; width: min(260px, 100%); margin: 8px auto; }
+.qr svg { display: block; width: 100%; height: auto; }
+.code { font-family: ui-monospace, monospace; letter-spacing: .08em; }
+
+/* Barre d'onglets */
+.onglets {
+  position: fixed; left: 0; right: 0; bottom: 0; display: flex; justify-content: center;
+  background: var(--surface); border-top: 1px solid var(--filet);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.onglets button {
+  flex: 1; max-width: 320px; background: none; border: 0; padding: 8px 0 10px; font-size: 12px;
+  color: var(--encre-2); display: flex; flex-direction: column; align-items: center; gap: 2px;
+}
+.onglets button.actif { color: var(--accent); }
+select {
+  width: 100%; min-height: 48px; padding: 10px 12px; border-radius: 10px;
+  border: 1px solid var(--filet); background: var(--surface); font-size: 17px;
+}

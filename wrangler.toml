@@ -1,0 +1,32 @@
+name = "budget"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+# L'interface (dossier public) est servie directement par Cloudflare.
+# Les adresses d'invitation (/i/...) et de retour de la banque (/callback)
+# passent d'abord par le serveur.
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = ["/api/*", "/i/*", "/callback"]
+
+# Base de données : remplace l'id par celui affiché par
+#   npx wrangler d1 create budget
+[[d1_databases]]
+binding = "DB"
+database_name = "budget"
+database_id = "REMPLACE_MOI"
+migrations_dir = "migrations"
+
+[vars]
+# Identifiant de ton application Enable Banking (pas secret).
+EB_APP_ID = "21d719a6-32b5-462c-b849-c7ca4bbc4f68"
+
+# Synchronisation automatique 4 fois par jour (heures UTC : 5h, 11h, 16h, 21h à Paris l'hiver).
+# Les banques limitent à 4 consultations par jour sans toi : ne pas augmenter.
+[triggers]
+crons = ["7 4,10,15,20 * * *"]
+
+# Secrets à définir (jamais dans ce fichier !) :
+#   npx wrangler secret put EB_PRIVATE_KEY      (contenu du fichier .pem)
+#   npx wrangler secret put CODE_INSTALLATION   (phrase de passe pour activer ton téléphone)

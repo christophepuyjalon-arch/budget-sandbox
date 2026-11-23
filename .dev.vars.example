@@ -1,0 +1,6 @@
+# Copie ce fichier en .dev.vars pour tester sur ton ordinateur (npm run dev).
+# .dev.vars n'est jamais envoyé sur GitHub.
+CODE_INSTALLATION="une-longue-phrase-de-passe-pour-tester"
+EB_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----
+colle ici le contenu du fichier .pem
+-----END PRIVATE KEY-----"

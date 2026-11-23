@@ -1159,15 +1159,18 @@ function calculerPrevision() {
   const ignores = new Set(d.prevision?.ignores || []);
 
   // 1. Opérations récurrentes (salaires, prêt, énergie, école…)
-  for (const r of detecterRecurrences(ops, d)) {
-    if (ignores.has(r.cle)) continue;
+  const modifs = d.prevision?.modifs || {};
+  for (const detecte of detecterRecurrences(ops, d)) {
+    if (ignores.has(detecte.cle)) continue;
+    const m = modifs[detecte.cle];
+    const r = { ...detecte, ...(m || {}), detecte, modifie: !!m };
     if (!r.ceMois) {
       let date = dateDuMois(m0, r.jour);
       const retard = date <= auj;
       if (retard) date = lendemain(auj);
-      evenements.push({ date, libelle: r.libelle, montant: r.montant, cle: r.cle, retard });
+      evenements.push({ date, libelle: r.libelle, montant: r.montant, cle: r.cle, retard, recurrence: r });
     }
-    if (r.jour <= 10) evenements.push({ date: dateDuMois(m1, r.jour), libelle: r.libelle, montant: r.montant, cle: r.cle });
+    if (r.jour <= 10) evenements.push({ date: dateDuMois(m1, r.jour), libelle: r.libelle, montant: r.montant, cle: r.cle, recurrence: r });
   }
 
   // 2. Cartes à débit différé : jour habituel du prélèvement (5 par défaut)
@@ -1243,12 +1246,12 @@ async function dessinerPrevision() {
   $('a-venir-titre').textContent = `À venir d’ici le ${Number(p.horizon.slice(8))} ${nomMois(p.horizon.slice(0, 7)).split(' ')[0]} (${p.evenements.length})`;
   $('a-venir').innerHTML = p.evenements.map((e, i) => `<li><button data-prevu="${i}">
       <span class="quand">${new Date(`${e.date}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</span>
-      <span class="quoi">${echapper(e.libelle)}${e.retard ? ' <small>(habituellement plus tôt)</small>' : ''}</span>
+      <span class="quoi">${echapper(e.libelle)}${e.recurrence?.modifie ? ' <small>(modifiée)</small>' : ''}${e.retard ? ' <small>(habituellement plus tôt)</small>' : ''}</span>
       <b class="${e.montant > 0 ? 'positif' : ''}">${fmtSigne(e.montant)}</b></button></li>`).join('') || '<li class="vide">Rien de prévu.</li>';
 }
 
 async function enregistrerPrevision(modif) {
-  const pr = { ignores: [...(donnees.prevision?.ignores || [])], ajouts: [...(donnees.prevision?.ajouts || [])] };
+  const pr = { ignores: [...(donnees.prevision?.ignores || [])], ajouts: [...(donnees.prevision?.ajouts || [])], modifs: { ...(donnees.prevision?.modifs || {}) } };
   modif(pr);
   try { await api('/api/prevision', { method: 'PUT', body: JSON.stringify(pr) }); await charger({ garderHistorique: true }); } catch (e) { alert(e.message); }
 }
@@ -1259,8 +1262,34 @@ $('a-venir').addEventListener('click', (e) => {
   if (ev.carte) { alert('Le prélèvement des cartes est calculé à partir des paiements à débiter : il ne peut pas être ignoré.'); return; }
   if (ev.ajout) {
     if (confirm(`Supprimer « ${ev.libelle} » des opérations prévues ?`)) enregistrerPrevision((pr) => { pr.ajouts = pr.ajouts.filter((a) => a.id !== ev.id); });
-  } else if (confirm(`Ne plus prévoir « ${ev.libelle} » (${fmtSigne(ev.montant)}) ? Utile si ce n’est plus une opération mensuelle.`)) {
-    enregistrerPrevision((pr) => { pr.ignores.push(ev.cle); });
+  } else if (ev.recurrence) {
+    ouvrirRecurrence(ev.recurrence);
+  }
+});
+
+let recurrenceOuverte = null;
+function ouvrirRecurrence(r) {
+  recurrenceOuverte = r;
+  $('rec-libelle').textContent = r.libelle;
+  $('rec-habitude').textContent = `Détectée : ${fmtSigne(r.detecte.montant)} vers le ${r.detecte.jour} du mois${r.detecte.montant > 0 ? ' (rentrée d’argent)' : ''}.`;
+  $('rec-montant').value = (Math.abs(r.montant) / 100).toFixed(2);
+  $('rec-jour').value = r.jour;
+  $('rec-retablir').hidden = !r.modifie;
+  $('dlg-recurrente').showModal();
+}
+$('dlg-recurrente').addEventListener('close', () => {
+  const r = recurrenceOuverte;
+  const choix = $('dlg-recurrente').returnValue;
+  if (!r || choix === 'annuler' || !choix) return;
+  if (choix === 'ignorer') {
+    if (confirm(`Ne plus prévoir « ${r.libelle} » ?`)) enregistrerPrevision((pr) => { pr.ignores.push(r.cle); delete pr.modifs[r.cle]; });
+  } else if (choix === 'retablir') {
+    enregistrerPrevision((pr) => { delete pr.modifs[r.cle]; });
+  } else {
+    const signe = r.detecte.montant > 0 ? 1 : -1;
+    const montant = signe * Math.abs(enCentimesSaisis($('rec-montant').value));
+    const jour = Math.min(31, Math.max(1, Math.round(Number($('rec-jour').value) || r.jour)));
+    enregistrerPrevision((pr) => { pr.modifs[r.cle] = { montant, jour }; });
   }
 });
 let sensPrevu = -1;

@@ -182,7 +182,12 @@ async function router(req, env) {
     const aujourdhui = maintenant().slice(0, 10);
     const ajouts = (c.ajouts || []).filter((a) => /^\d{4}-\d{2}-\d{2}$/.test(a.date || '') && a.date >= aujourdhui && Number.isFinite(Number(a.montant)))
       .slice(0, 100).map((a) => ({ id: String(a.id || crypto.randomUUID()).slice(0, 40), date: a.date, libelle: String(a.libelle || 'Opération prévue').slice(0, 80), montant: Math.round(Number(a.montant)) }));
-    await ecrireReglage(env, 'prevision', { ignores, ajouts }).run();
+    // Corrections d'une opération récurrente : montant (centimes, signé) et/ou jour du mois.
+    const modifs = Object.fromEntries(Object.entries(c.modifs || {}).slice(0, 100).map(([cle, v]) => [String(cle).slice(0, 80), {
+      ...(Number.isFinite(Number(v?.montant)) ? { montant: Math.round(Number(v.montant)) } : {}),
+      ...(Number(v?.jour) >= 1 && Number(v?.jour) <= 31 ? { jour: Math.round(Number(v.jour)) } : {}),
+    }]).filter(([, v]) => Object.keys(v).length));
+    await ecrireReglage(env, 'prevision', { ignores, ajouts, modifs }).run();
     return repondre({ ok: true });
   }
 

@@ -2,7 +2,7 @@
 // Les tables sont créées automatiquement au premier appel : rien à faire à la main.
 // Pour une évolution future, ajouter une étape à EVOLUTIONS (elle s'exécutera une seule fois).
 
-import { CATEGORIES, REGLES, REGLES_V3, REGLES_V4, PROJETS } from './defauts.js';
+import { CATEGORIES, REGLES, REGLES_V3, REGLES_V4, RESTAURATION, PROJETS } from './defauts.js';
 
 const TABLES = [
   `CREATE TABLE IF NOT EXISTS appareils ( id TEXT PRIMARY KEY, nom TEXT NOT NULL, jeton TEXT NOT NULL UNIQUE, admin INTEGER NOT NULL DEFAULT 0, cree TEXT NOT NULL, vu TEXT NOT NULL )`,
@@ -60,6 +60,12 @@ const EVOLUTIONS = [
   [5, (db) => [
     db.prepare('ALTER TABLE operations ADD COLUMN note TEXT'),
     db.prepare('ALTER TABLE regles ADD COLUMN note TEXT'),
+  ]],
+  // 6 : restaurants et sorties dans Shopping (règles de départ seulement ; tes règles ne bougent pas).
+  [6, (db) => [
+    db.prepare(`UPDATE regles SET categorie = 'shopping'
+      WHERE source = 'defaut' AND categorie = 'loisirs' AND motif IN (SELECT value FROM json_each(?))
+        AND EXISTS (SELECT 1 FROM categories WHERE id = 'shopping')`).bind(JSON.stringify(RESTAURATION)),
   ]],
 ];
 

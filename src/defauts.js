@@ -59,6 +59,12 @@ export const REGLES_V4 = {
   shopping: ['ETAM', 'JULES', 'CELIO', 'PROMOD', 'CAMAIEU', 'GALERIES LAFAYETTE', 'PRINTEMPS', 'COIFF', 'COIFFURE', 'COIFFE'],
 };
 
+// Restaurants, cafés, sorties : rangés dans Shopping (les « extras »), pour piloter avec deux
+// enveloppes seulement. Les hôtels et locations restent dans Loisirs et vacances.
+export const RESTAURATION = ['RESTAURANT', 'CINEMA', 'CINE ', 'MCDONALD', 'BURGER KING', 'KFC', 'DELIVEROO', 'UBER EATS', 'BAR ',
+  'BRASSERIE', 'TICKETMASTER', 'FNAC SPECTACLES', 'MCDO', 'MC DONALD', 'AREAS', 'STARBUCKS', 'PAUL', 'BRIOCHE DOREE', 'COLUMBUS',
+  'SUBWAY', 'DOMINO', 'PIZZA', 'NEWREST', 'BUFFET', 'TRAITEUR', 'CAFE', 'AMICALE'];
+
 // Projets : budget, période (mois de début et de fin), motif facultatif pour rattacher
 // automatiquement les opérations de la période (ex. DGFIP pour les impôts).
 export const PROJETS = [

@@ -139,21 +139,24 @@ function preparerRegles(d) {
     .filter((r) => (cats.has(r.categorie) || (!r.categorie && r.note)) && r.motif.trim())
     .map((r) => ({ ...r, re: new RegExp(`(^|[^A-Z])${echapperRegex(sansPonctuation(r.motif))}S?(?=[^A-Z]|$)`) }))
     // Tes règles d'abord, puis le motif le plus long (le plus précis).
-    .sort((a, b) => (a.source === 'perso' ? 0 : 1) - (b.source === 'perso' ? 0 : 1) || b.motif.trim().length - a.motif.trim().length);
+    .sort((a, b) => (a.source === 'perso' ? 0 : 1) - (b.source === 'perso' ? 0 : 1)
+      || (a.montant != null ? 0 : 1) - (b.montant != null ? 0 : 1) || b.motif.trim().length - a.motif.trim().length);
 }
+
+const regleVaut = (r, o, texte) => r.re.test(texte) && (r.montant == null || Math.abs(o.montant) === r.montant);
 
 // Commentaire : celui saisi sur l'opération, sinon celui d'une règle.
 function noteDe(o) {
   if (o.note) return o.note;
   const texte = sansPonctuation(`${o.libelle} ${o.contrepartie || ''}`);
-  for (const r of reglesPretes) if (r.note && r.re.test(texte)) return r.note;
+  for (const r of reglesPretes) if (r.note && regleVaut(r, o, texte)) return r.note;
   return null;
 }
 
 function categorieDe(o, d) {
   if (o.categorie && d.categories.some((c) => c.id === o.categorie)) return o.categorie;
   const texte = sansPonctuation(`${o.libelle} ${o.contrepartie || ''}`);
-  for (const r of reglesPretes) if (r.categorie && r.re.test(texte)) return r.categorie;
+  for (const r of reglesPretes) if (r.categorie && regleVaut(r, o, texte)) return r.categorie;
   return o.montant > 0 && d.categories.some((c) => c.id === 'revenus') ? 'revenus' : null;
 }
 
@@ -504,6 +507,9 @@ function ouvrirFiche(o) {
   $('fiche-regle').hidden = true;
   $('fiche-motif').value = motifPropose(o);
   $('fiche-note').value = o.commentaire || '';
+  $('fiche-montant-seul').checked = false;
+  $('fiche-montant-seul-texte').textContent = `Seulement pour ce montant (${fmt(Math.abs(o.montant))})`;
+  majFicheRecurrente();
   const projets = d.projets.filter((p) => !p.archive || p.id === o.projet);
   $('fiche-projet').innerHTML = `<option value="">Aucun</option>` + projets.map((p) => `<option value="${echapper(p.id)}">${echapper(p.nom)}</option>`).join('');
   $('fiche-projet').value = o.projet || '';
@@ -548,6 +554,7 @@ $('fiche').addEventListener('close', async () => {
     const regle = !$('fiche-regle').hidden && $('fiche-toujours').checked && $('fiche-motif').value.trim().length >= 3;
     if (regle) {
       const r = { motif: $('fiche-motif').value };
+      if ($('fiche-montant-seul').checked) r.montant = Math.abs(o.montant);
       if ('categorie' in corps) r.categorie = ficheCat;
       if (noteChange) r.note = note;
       await api('/api/regles', { method: 'POST', body: JSON.stringify(r) });
@@ -585,7 +592,7 @@ async function dessinerReglages() {
 
   // Règles personnelles
   const perso = (d.regles || []).filter((r) => r.source === 'perso');
-  $('liste-regles').innerHTML = perso.map((r) => `<li><div>${echapper(r.motif)}<small>${r.categorie ? `→ ${echapper(nomCategorie(d, r.categorie))}` : 'commentaire seulement'}${r.note ? ` · « ${echapper(r.note)} »` : ''}</small></div>
+  $('liste-regles').innerHTML = perso.map((r) => `<li><div>${echapper(r.motif)}<small>${r.montant ? `${fmt(r.montant)} seulement · ` : ''}${r.categorie ? `→ ${echapper(nomCategorie(d, r.categorie))}` : 'commentaire seulement'}${r.note ? ` · « ${echapper(r.note)} »` : ''}</small></div>
     <button class="action danger" data-regle="${echapper(r.id)}">Supprimer</button></li>`).join('') || '<li class="vide">Aucune règle personnelle pour l’instant.</li>';
 
   if (!moi?.admin) return;
@@ -1163,7 +1170,18 @@ function calculerPrevision() {
 
   // 1. Opérations récurrentes (salaires, prêt, énergie, école…)
   const modifs = d.prevision?.modifs || {};
-  for (const detecte of detecterRecurrences(ops, d)) {
+  // Récurrences déclarées à la main : elles remplacent la détection automatique pour le même libellé.
+  const perso = d.prevision?.recurrentes || [];
+  const basesPerso = new Set(perso.map((r) => r.base));
+  const courantsIds = new Set(d.comptes.filter((c) => !c.masque && c.type !== 'epargne').map((c) => c.id));
+  const recurrences = detecterRecurrences(ops, d).filter((r) => !basesPerso.has(r.cle));
+  for (const p of perso) {
+    const tolerance = Math.max(100, Math.abs(p.montant) * 0.05);
+    const ceMois = ops.filter((o) => courantsIds.has(o.compte) && !o.carte && (o.date_compta || o.date).startsWith(m0)
+      && cleRecurrence(o) === p.base && Math.abs(o.montant - p.montant) <= tolerance).reduce((t, o) => t + o.montant, 0);
+    recurrences.push({ cle: `p:${p.id}`, libelle: p.libelle, montant: p.montant, jour: p.jour, ceMois, perso: p });
+  }
+  for (const detecte of recurrences) {
     if (ignores.has(detecte.cle)) continue;
     const m = modifs[detecte.cle];
     const r = { ...detecte, ...(m || {}), detecte, modifie: !!m };
@@ -1281,7 +1299,8 @@ async function dessinerPrevision() {
 }
 
 async function enregistrerPrevision(modif) {
-  const pr = { ignores: [...(donnees.prevision?.ignores || [])], ajouts: [...(donnees.prevision?.ajouts || [])], modifs: { ...(donnees.prevision?.modifs || {}) } };
+  const pr = { ignores: [...(donnees.prevision?.ignores || [])], ajouts: [...(donnees.prevision?.ajouts || [])], modifs: { ...(donnees.prevision?.modifs || {}) },
+    recurrentes: [...(donnees.prevision?.recurrentes || [])] };
   modif(pr);
   try { await api('/api/prevision', { method: 'PUT', body: JSON.stringify(pr) }); await charger({ garderHistorique: true }); } catch (e) { alert(e.message); }
 }
@@ -1301,7 +1320,7 @@ let recurrenceOuverte = null;
 function ouvrirRecurrence(r) {
   recurrenceOuverte = r;
   $('rec-libelle').textContent = r.libelle;
-  $('rec-habitude').textContent = `Détectée : ${fmtSigne(r.detecte.montant)} vers le ${r.detecte.jour} du mois${r.detecte.montant > 0 ? ' (rentrée d’argent)' : ''}.`;
+  $('rec-habitude').textContent = `${r.perso ? 'Déclarée' : 'Détectée'} : ${fmtSigne(r.detecte.montant)} vers le ${r.detecte.jour} du mois${r.detecte.montant > 0 ? ' (rentrée d’argent)' : ''}.`;
   $('rec-montant').value = (Math.abs(r.montant) / 100).toFixed(2);
   $('rec-jour').value = r.jour;
   $('rec-retablir').hidden = !r.modifie;
@@ -1312,7 +1331,12 @@ $('dlg-recurrente').addEventListener('close', () => {
   const choix = $('dlg-recurrente').returnValue;
   if (!r || choix === 'annuler' || !choix) return;
   if (choix === 'ignorer') {
-    if (confirm(`Ne plus prévoir « ${r.libelle} » ?`)) enregistrerPrevision((pr) => { pr.ignores.push(r.cle); delete pr.modifs[r.cle]; });
+    if (confirm(`Ne plus prévoir « ${r.libelle} » ?`)) {
+      enregistrerPrevision((pr) => {
+        if (r.perso) pr.recurrentes = pr.recurrentes.filter((x) => x.id !== r.perso.id); else pr.ignores.push(r.cle);
+        delete pr.modifs[r.cle];
+      });
+    }
   } else if (choix === 'retablir') {
     enregistrerPrevision((pr) => { delete pr.modifs[r.cle]; });
   } else {
@@ -1442,6 +1466,32 @@ $('btn-analyse-partager').addEventListener('click', async () => {
     $('btn-analyse-copier').click();
     window.open('https://claude.ai/new', '_blank');
   }
+});
+
+// ---------- déclarer une opération récurrente depuis sa fiche ----------
+function recurrentePersoDe(o) {
+  const base = cleRecurrence(o);
+  return (donnees.prevision?.recurrentes || []).find((r) => r.base === base && Math.abs(r.montant - o.montant) <= Math.max(100, Math.abs(r.montant) * 0.05));
+}
+function majFicheRecurrente() {
+  const o = ficheOp;
+  const possible = o && !o.carte && !o.epargne && o.statut !== 'AVNR';
+  $('fiche-prevision').hidden = !possible;
+  if (!possible) return;
+  const r = recurrentePersoDe(o);
+  const jour = Number(o.date.slice(8, 10));
+  $('btn-fiche-recurrente').textContent = r ? 'Ne plus prévoir chaque mois' : `Prévoir chaque mois, le ${jour}`;
+  $('fiche-recurrente-etat').textContent = r ? `Prévue le ${r.jour} de chaque mois (${fmtSigne(r.montant)}). Modifiable depuis la prévision.` : '';
+}
+$('btn-fiche-recurrente').addEventListener('click', async () => {
+  const o = ficheOp;
+  if (!o) return;
+  const r = recurrentePersoDe(o);
+  await enregistrerPrevision((pr) => {
+    if (r) pr.recurrentes = pr.recurrentes.filter((x) => x.id !== r.id);
+    else pr.recurrentes.push({ id: crypto.randomUUID?.() || String(Date.now()), base: cleRecurrence(o), libelle: o.libelle, montant: o.montant, jour: Number(o.date.slice(8, 10)) });
+  });
+  majFicheRecurrente();
 });
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});

@@ -310,6 +310,7 @@
     <div id="fiche-regle" class="fiche-regle" hidden>
       <label class="case"><input type="checkbox" id="fiche-toujours" checked> <span id="fiche-toujours-texte">Faire de même pour les opérations contenant :</span></label>
       <input id="fiche-motif" maxlength="60" aria-label="Motif">
+      <label class="case"><input type="checkbox" id="fiche-montant-seul"> <span id="fiche-montant-seul-texte">Seulement pour ce montant</span></label>
     </div>
     <details id="fiche-technique" class="fiche-technique" hidden>
       <summary>Détails techniques (données de la banque)</summary>
@@ -317,6 +318,10 @@
     </details>
     <label for="fiche-projet">Projet</label>
     <select id="fiche-projet"></select>
+    <div id="fiche-prevision" class="fiche-prevision" hidden>
+      <button type="button" id="btn-fiche-recurrente" class="secondaire"></button>
+      <p id="fiche-recurrente-etat" class="discret-texte"></p>
+    </div>
     <div class="deux boutons">
       <button value="annuler" class="secondaire" formnovalidate>Annuler</button>
       <button value="ok" id="fiche-ok" class="principal">Enregistrer</button>

@@ -283,3 +283,6 @@ small.inline { display: inline; }
 .a-venir-liste .quoi { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 .carte-analyse { background: var(--surface); border-radius: 12px; padding: 2px 14px 14px; margin-top: 22px; }
 .carte-analyse .titre-section { margin-top: 12px; }
+
+.fiche-prevision { margin-top: 12px; }
+.fiche-prevision .secondaire { margin-top: 0; }

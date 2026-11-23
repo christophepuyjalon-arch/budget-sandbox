@@ -67,6 +67,10 @@ const EVOLUTIONS = [
       WHERE source = 'defaut' AND categorie = 'loisirs' AND motif IN (SELECT value FROM json_each(?))
         AND EXISTS (SELECT 1 FROM categories WHERE id = 'shopping')`).bind(JSON.stringify(RESTAURATION)),
   ]],
+  // 7 : règle limitée à un montant (même libellé, usages différents selon le montant).
+  [7, (db) => [
+    db.prepare('ALTER TABLE regles ADD COLUMN montant INTEGER'),
+  ]],
 ];
 
 let pret = null;

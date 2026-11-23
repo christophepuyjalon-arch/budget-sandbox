@@ -149,13 +149,16 @@ async function router(req, env) {
     const corps = await req.json();
     const mo = normaliser(corps.motif);
     if (mo.length < 3) return repondre({ erreur: 'Motif trop court.' }, 400);
-    const ancienne = await env.DB.prepare("SELECT categorie, note FROM regles WHERE motif = ? AND source = 'perso'").bind(mo).first();
+    // Montant facultatif (centimes, valeur absolue) : la règle ne vaut que pour ce montant exact.
+    const montant = Number.isFinite(Number(corps.montant)) && Number(corps.montant) > 0 ? Math.round(Math.abs(Number(corps.montant))) : null;
+    const memeRegle = "motif = ? AND source = 'perso' AND COALESCE(montant, -1) = COALESCE(?, -1)";
+    const ancienne = await env.DB.prepare(`SELECT categorie, note FROM regles WHERE ${memeRegle}`).bind(mo, montant).first();
     const categorie = 'categorie' in corps ? (corps.categorie || '') : (ancienne?.categorie || '');
     const note = 'note' in corps ? (String(corps.note || '').trim().slice(0, 200) || null) : (ancienne?.note || null);
     if (!categorie && !note) return repondre({ erreur: 'Rien à appliquer.' }, 400);
     await env.DB.batch([
-      env.DB.prepare("DELETE FROM regles WHERE motif = ? AND source = 'perso'").bind(mo),
-      env.DB.prepare("INSERT INTO regles (id, motif, categorie, note, source, cree) VALUES (?, ?, ?, ?, 'perso', ?)").bind(crypto.randomUUID(), mo, categorie, note, maintenant()),
+      env.DB.prepare(`DELETE FROM regles WHERE ${memeRegle}`).bind(mo, montant),
+      env.DB.prepare("INSERT INTO regles (id, motif, categorie, note, montant, source, cree) VALUES (?, ?, ?, ?, ?, 'perso', ?)").bind(crypto.randomUUID(), mo, categorie, note, montant, maintenant()),
     ]);
     return repondre({ ok: true, motif: mo });
   }
@@ -187,7 +190,11 @@ async function router(req, env) {
       ...(Number.isFinite(Number(v?.montant)) ? { montant: Math.round(Number(v.montant)) } : {}),
       ...(Number(v?.jour) >= 1 && Number(v?.jour) <= 31 ? { jour: Math.round(Number(v.jour)) } : {}),
     }]).filter(([, v]) => Object.keys(v).length));
-    await ecrireReglage(env, 'prevision', { ignores, ajouts, modifs }).run();
+    // Opérations déclarées récurrentes depuis la liste : base = clé du libellé, montant signé, jour du mois.
+    const recurrentes = (c.recurrentes || []).slice(0, 100).filter((r) => r.base && Number.isFinite(Number(r.montant)) && Number(r.jour) >= 1 && Number(r.jour) <= 31)
+      .map((r) => ({ id: String(r.id || crypto.randomUUID()).slice(0, 40), base: String(r.base).slice(0, 80), libelle: String(r.libelle || '').slice(0, 80),
+        montant: Math.round(Number(r.montant)), jour: Math.round(Number(r.jour)) }));
+    await ecrireReglage(env, 'prevision', { ignores, ajouts, modifs, recurrentes }).run();
     return repondre({ ok: true });
   }
 
@@ -420,7 +427,7 @@ async function etat(env, mois) {
     env.DB.prepare('SELECT MIN(date) AS premier FROM operations'),
     env.DB.prepare("SELECT valeur FROM reglages WHERE cle = 'synchro'"),
     env.DB.prepare('SELECT id, nom, type, budget FROM categories ORDER BY ordre'),
-    env.DB.prepare('SELECT id, motif, categorie, note, source FROM regles'),
+    env.DB.prepare('SELECT id, motif, categorie, note, montant, source FROM regles'),
     env.DB.prepare(`SELECT p.id, p.nom, p.budget, p.debut, p.fin, p.motif, p.archive,
       COALESCE((SELECT -SUM(o.montant) FROM operations o WHERE o.projet = p.id), 0) AS depense,
       (SELECT COUNT(*) FROM operations o WHERE o.projet = p.id) AS nombre

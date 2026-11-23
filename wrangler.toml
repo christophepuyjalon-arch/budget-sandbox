@@ -22,10 +22,11 @@ migrations_dir = "migrations"
 # Identifiant de ton application Enable Banking (pas secret).
 EB_APP_ID = "21d719a6-32b5-462c-b849-c7ca4bbc4f68"
 
-# Synchronisation automatique 4 fois par jour (heures UTC : 5h, 11h, 16h, 21h à Paris l'hiver).
-# Les banques limitent à 4 consultations par jour sans toi : ne pas augmenter.
+# Synchronisation automatique 2 fois par jour (heures UTC : 7h et 19h à Paris l'hiver, 8h et 20h l'été).
+# Les banques limitent à 4 consultations par jour sans toi : ne pas dépasser 4.
+# Le bouton de synchronisation dans l'app ne compte pas dans cette limite.
 [triggers]
-crons = ["7 4,10,15,20 * * *"]
+crons = ["7 6,18 * * *"]
 
 # Secrets à définir (jamais dans ce fichier !) :
 #   npx wrangler secret put EB_PRIVATE_KEY      (contenu du fichier .pem)

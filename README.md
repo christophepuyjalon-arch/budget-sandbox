@@ -6,7 +6,7 @@ Budget récupère automatiquement les opérations de vos comptes bancaires (via 
 
 ## Comment c’est organisé
 
-Comme pour Forme, un petit serveur gratuit chez Cloudflare garde tes clés secrètes et interroge la banque 4 fois par jour (le maximum autorisé par les banques sans toi). Les données sont rangées dans une base Cloudflare D1.
+Comme pour Forme, un petit serveur gratuit chez Cloudflare garde tes clés secrètes et interroge la banque 2 fois par jour, matin et soir (les banques autorisent 4 consultations par jour sans toi). Les données sont rangées dans une base Cloudflare D1.
 
 ```
 src/index.js       le serveur : routes, synchronisation, données pour l’app
@@ -102,6 +102,6 @@ L’invitation reste valable 48 heures. Si l’app installée lui redemande un c
 
 ## Limites connues
 
-- Les opérations arrivent avec le délai de la banque : 4 synchros automatiques par jour, plus le bouton de synchronisation quand tu ouvres l’app.
+- Les opérations arrivent avec le délai de la banque : 2 synchros automatiques par jour, plus le bouton de synchronisation quand tu ouvres l’app.
 - Le code Enable Banking a été écrit sans pouvoir consulter leur documentation en direct, puis testé contre une imitation de leur service. Le premier essai sur le sandbox réel peut révéler un nom de champ différent : `npx wrangler tail` affiche alors la réponse exacte de leur serveur.
 - À la première connexion, l’app demande 1 an d’historique. Si la banque refuse, elle se contente de 89 jours.

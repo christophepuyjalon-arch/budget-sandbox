@@ -44,6 +44,14 @@ export const REGLES = {
   differe: ['DEBIT DIFFERE', 'FACTURE CARTE', 'FACTURES CARTE', 'RELEVE CARTE', 'TOTAL CARTE', 'DEPENSES CARTE'],
 };
 
+// Ajoutées après les premiers essais sur les vrais libellés de la Caisse d'Épargne.
+export const REGLES_V3 = {
+  transports: ['BOLT', 'FREENOW', 'HEETCH', 'G7', 'LIME', 'AS24', 'DYNEFF', 'INTERMARCHE STATION', 'ESSENCE'],
+  loisirs: ['MCDO', 'MC DONALD', 'AREAS', 'STARBUCKS', 'PAUL', 'BRIOCHE DOREE', 'COLUMBUS', 'SUBWAY', 'DOMINO', 'PIZZA'],
+  courses: ['CARREFOUR CITY', 'CARREFOUR MARKET', 'COCCINELLE', 'SPAR', 'VIVAL', 'LA VIE CLAIRE', 'MARCHE'],
+  shopping: ['FNAC.COM', 'LEROY', 'JOUE CLUB', 'KING JOUET', 'LA GRANDE RECRE'],
+};
+
 // Projets : budget, période (mois de début et de fin), motif facultatif pour rattacher
 // automatiquement les opérations de la période (ex. DGFIP pour les impôts).
 export const PROJETS = [

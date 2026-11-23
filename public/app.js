@@ -134,7 +134,7 @@ function preparerRegles(d) {
   const cats = new Set(d.categories.map((c) => c.id));
   reglesPretes = d.regles
     .filter((r) => cats.has(r.categorie) && r.motif.trim())
-    .map((r) => ({ ...r, re: new RegExp(`(^|[^A-Z0-9])${echapperRegex(r.motif.trim())}(?=[^A-Z0-9]|$)`) }))
+    .map((r) => ({ ...r, re: new RegExp(`(^|[^A-Z])${echapperRegex(r.motif.trim())}(?=[^A-Z]|$)`) }))
     // Tes règles d'abord, puis le motif le plus long (le plus précis).
     .sort((a, b) => (a.source === 'perso' ? 0 : 1) - (b.source === 'perso' ? 0 : 1) || b.motif.trim().length - a.motif.trim().length);
 }
@@ -156,6 +156,10 @@ function motifPropose(o) {
   return base.split(' ').slice(0, 3).join(' ');
 }
 
+const nomCarte = (d, carte) => {
+  const nom = d.nomsCartes?.[carte];
+  return carte === '?' ? 'Carte' : `Carte …${carte}${nom ? ` (${nom})` : ''}`;
+};
 const typeCompte = (d, id) => d.comptes.find((c) => c.id === id)?.type || 'courant';
 const nomCategorie = (d, id) => d.categories.find((c) => c.id === id)?.nom || 'À classer';
 
@@ -191,24 +195,15 @@ function calculer(d) {
   const resteEnveloppes = enveloppes.reduce((s, c) => s + Math.max(c.budget - c.depense, 0), 0);
   const joursRestants = enCours ? nbJours - jour + 1 : 0;
 
-  // Comptes : disponible = comptes courants − paiements carte pas encore débités.
-  const today = aujourdhui();
-  let courant = 0, encours = 0, epargne = 0;
-  const encoursParCarte = {};
+  // Disponible = comptes courants − paiements carte pas encore débités (débit différé).
+  let courant = 0, epargne = 0;
   for (const c of d.comptes.filter((x) => !x.masque)) {
     if (c.type === 'epargne') epargne += c.solde || 0;
-    else if (c.type === 'courant') courant += c.solde || 0;
+    else courant += c.solde || 0;
   }
-  if (enCours) {
-    for (const c of d.comptes.filter((x) => !x.masque && x.type === 'carte')) {
-      const jd = c.jour_debit || 4;
-      // Le relevé du mois précédent n'est débité qu'à partir du jour de débit.
-      const debutNonDebite = Number(today.slice(8, 10)) < jd ? `${decalerMois(d.mois, -1)}-01` : `${d.mois}-01`;
-      const s = d.operations.filter((o) => o.compte === c.id && o.date >= debutNonDebite).reduce((t, o) => t - o.montant, 0);
-      encoursParCarte[c.id] = s;
-      encours += s;
-    }
-  }
+  const encoursParCarte = {};
+  for (const e of d.encours || []) encoursParCarte[e.carte || '?'] = (encoursParCarte[e.carte || '?'] || 0) + e.montant;
+  const encours = Object.values(encoursParCarte).reduce((t, v) => t + v, 0);
   return {
     enCours, passe, jour, nbJours, fraction, cats, ops, aClasser, totalBudget, totalDepense,
     resteEnveloppes, joursRestants, courant, encours, encoursParCarte, epargne,
@@ -304,17 +299,18 @@ function dessinerAccueil(d, k) {
   const visibles = d.comptes.filter((c) => !c.masque);
   $('dispo').textContent = visibles.length ? fmt(k.courant - k.encours) : '–';
   $('dispo-detail').textContent = !visibles.length ? '' : k.encours
-    ? `comptes courants ${fmt(k.courant)} − cartes à débiter ${fmt(k.encours)}`
+    ? `solde ${fmt(k.courant)} − cartes à débiter ${fmt(k.encours)}`
     : 'sur les comptes courants';
-  const ordre = { courant: 0, carte: 1, epargne: 2 };
+  const ordre = { courant: 0, carte: 0, epargne: 2 };
+  const lignesCartes = Object.entries(k.encoursParCarte).filter(([, v]) => v).map(([carte, v]) =>
+    `<li><span class="nom">${echapper(nomCarte(d, carte))}<small>paiements à débiter (débit différé)</small></span>
+      <span class="montant">−${fmt(v)}</span></li>`);
   $('comptes').innerHTML = visibles.length
     ? [...visibles].sort((a, b) => ordre[a.type] - ordre[b.type]).map((c) => {
-      const carte = c.type === 'carte';
-      const montant = carte ? (k.enCours ? `−${fmt(k.encoursParCarte[c.id] || 0)}` : '') : c.solde == null ? '–' : fmt(c.solde);
-      const detail = carte ? `carte · débitée le ${c.jour_debit || 4}` : c.type === 'epargne' ? 'épargne' : c.banque;
+      const detail = c.type === 'epargne' ? 'épargne' : c.banque;
       return `<li><span class="nom">${echapper(c.nom)}<small>${echapper(detail)}${c.iban ? ` · ${echapper(c.iban)}` : ''}</small></span>
-        <span class="montant ${!carte && c.solde < 0 ? 'negatif' : ''}">${montant}</span></li>`;
-    }).join('')
+        <span class="montant ${c.solde < 0 ? 'negatif' : ''}">${c.solde == null ? '–' : fmt(c.solde)}</span></li>`;
+    }).concat(lignesCartes).join('')
     : `<li class="vide">${moi?.admin ? 'Aucun compte : connecte ta banque dans Réglages.' : 'Aucun compte connecté pour l’instant.'}</li>`;
 }
 
@@ -429,8 +425,9 @@ function dessinerOperations(d, k) {
   for (const o of liste) {
     if (o.date !== jourCourant) { jourCourant = o.date; html += `<h3 class="jour">${nomJour(o.date)}</h3>`; }
     const etiquette = o.epargne ? 'Épargne' : o.projetNom ? `Projet · ${o.projetNom}` : o.cat ? nomCategorie(d, o.cat) : 'À classer';
-    const detail = [o.contrepartie && o.contrepartie !== o.libelle ? o.contrepartie : null, multi ? nomsComptes[o.compte] : null].filter(Boolean).join(' · ');
-    html += `<button class="op ${o.statut === 'PDNG' ? 'encours' : ''}" data-op="${echapper(o.id)}">
+    const detail = [o.contrepartie && o.contrepartie !== o.libelle ? o.contrepartie : null,
+      o.carte ? nomCarte(d, o.carte) : multi ? nomsComptes[o.compte] : null].filter(Boolean).join(' · ');
+    html += `<button class="op ${o.statut === 'PDNG' ? 'encours' : o.statut === 'AVNR' ? 'adebiter' : ''}" data-op="${echapper(o.id)}">
       <span class="libelle">${echapper(o.libelle)}</span>
       <span class="montant ${o.montant > 0 ? 'positif' : ''}">${fmtSigne(o.montant)}</span>
       <span class="puce-cat ${!o.cat && !o.projetNom && !o.epargne ? 'vide' : ''} ${o.categorie || (o.projet && o.projet !== '') ? 'manuel' : ''}">${echapper(etiquette)}</span>
@@ -457,7 +454,8 @@ function ouvrirFiche(o) {
   $('fiche-libelle').textContent = o.libelle;
   $('fiche-montant').textContent = fmtSigne(o.montant);
   $('fiche-montant').className = `fiche-montant ${o.montant > 0 ? 'positif' : ''}`;
-  $('fiche-compte').textContent = [o.contrepartie, d.comptes.find((c) => c.id === o.compte)?.nom, o.statut === 'PDNG' ? 'en cours' : null].filter(Boolean).join(' · ');
+  $('fiche-compte').textContent = [o.contrepartie, o.carte ? nomCarte(d, o.carte) : null, d.comptes.find((c) => c.id === o.compte)?.nom,
+    o.statut === 'PDNG' ? 'en cours' : o.statut === 'AVNR' ? 'pas encore débité' : null].filter(Boolean).join(' · ');
   $('fiche-categories').innerHTML = d.categories.map((c) => `<button type="button" role="radio" aria-checked="${c.id === ficheCat}" data-c="${echapper(c.id)}">${echapper(c.nom)}</button>`).join('');
   $('fiche-regle').hidden = true;
   $('fiche-motif').value = motifPropose(o);
@@ -539,12 +537,17 @@ async function dessinerReglages() {
       <input class="compte-nom" value="${echapper(c.nom)}" aria-label="Nom du compte" maxlength="40">
       <small>${echapper(c.banque)}${c.iban ? ` · ${echapper(c.iban)}` : ''}</small>
       <div class="deux">
-        <select class="compte-type" aria-label="Type">${[['courant', 'Compte courant'], ['carte', 'Carte à débit différé'], ['epargne', 'Épargne']]
+        <select class="compte-type" aria-label="Type">${[['courant', 'Compte courant'], ['epargne', 'Épargne']]
           .map(([v, t]) => `<option value="${v}" ${c.type === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
-        <label class="jour-debit" ${c.type === 'carte' ? '' : 'hidden'}>Débitée le <input class="compte-jour" type="number" min="1" max="28" value="${c.jour_debit || 4}"></label>
       </div>
       <label class="case"><input type="checkbox" class="compte-masque" ${c.masque ? 'checked' : ''}> Masquer ce compte</label>
     </div></li>`).join('') || '<li class="vide">Aucun compte.</li>';
+
+  // Cartes (repérées par la fin de leur numéro dans les libellés)
+  $('liste-cartes').innerHTML = (d.cartes || []).map((c) => `<li><div class="ligne-carte">
+      <span>Carte …${echapper(c)}</span>
+      <input data-carte="${echapper(c)}" value="${echapper(d.nomsCartes?.[c] || '')}" placeholder="Prénom" maxlength="30" aria-label="Titulaire de la carte …${echapper(c)}">
+    </div></li>`).join('') || '<li class="vide">Aucun paiement par carte pour l’instant.</li>';
 
   // Banque
   $('connexions').innerHTML = d.connexions.map((c) => {
@@ -665,14 +668,18 @@ $('liste-comptes').addEventListener('change', async (e) => {
   const li = e.target.closest('[data-compte]');
   if (!li) return;
   const type = li.querySelector('.compte-type').value;
-  li.querySelector('.jour-debit').hidden = type !== 'carte';
   try {
     await api(`/api/comptes/${encodeURIComponent(li.dataset.compte)}`, {
       method: 'PATCH',
-      body: JSON.stringify({ type, jour_debit: li.querySelector('.compte-jour').value, masque: li.querySelector('.compte-masque').checked, nom: li.querySelector('.compte-nom').value }),
+      body: JSON.stringify({ type, masque: li.querySelector('.compte-masque').checked, nom: li.querySelector('.compte-nom').value }),
     });
     await charger();
   } catch (err) { alert(err.message); }
+});
+
+$('liste-cartes').addEventListener('change', async () => {
+  const noms = Object.fromEntries([...document.querySelectorAll('[data-carte]')].map((i) => [i.dataset.carte, i.value]));
+  try { await api('/api/cartes', { method: 'PUT', body: JSON.stringify({ noms }) }); await charger(); } catch (e) { alert(e.message); }
 });
 
 // Banque

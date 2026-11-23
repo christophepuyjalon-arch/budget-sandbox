@@ -2,7 +2,7 @@
 // Les tables sont créées automatiquement au premier appel : rien à faire à la main.
 // Pour une évolution future, ajouter une étape à EVOLUTIONS (elle s'exécutera une seule fois).
 
-import { CATEGORIES, REGLES, PROJETS } from './defauts.js';
+import { CATEGORIES, REGLES, REGLES_V3, PROJETS } from './defauts.js';
 
 const TABLES = [
   `CREATE TABLE IF NOT EXISTS appareils ( id TEXT PRIMARY KEY, nom TEXT NOT NULL, jeton TEXT NOT NULL UNIQUE, admin INTEGER NOT NULL DEFAULT 0, cree TEXT NOT NULL, vu TEXT NOT NULL )`,
@@ -39,6 +39,15 @@ const EVOLUTIONS = [
       db.prepare("INSERT OR IGNORE INTO regles (id, motif, categorie, source, cree) VALUES (?, ?, ?, 'defaut', ?)").bind(`d:${m}`, m, cat, new Date().toISOString()))),
     ...PROJETS.map(([id, nom, budget, debut, fin, motif]) =>
       db.prepare('INSERT OR IGNORE INTO projets (id, nom, budget, debut, fin, motif, cree) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(id, nom, budget, debut, fin, motif, new Date().toISOString())),
+  ]],
+  // 3 : numéro de carte (débit différé) et règles complémentaires. Les comptes sont réimportés
+  //     une fois pour nettoyer les libellés déjà enregistrés (les classements manuels sont conservés).
+  [3, (db) => [
+    db.prepare('ALTER TABLE operations ADD COLUMN carte TEXT'),
+    db.prepare('UPDATE comptes SET synchro = NULL'),
+    ...Object.entries(REGLES_V3).flatMap(([cat, motifs]) => motifs.map((m) =>
+      db.prepare("INSERT OR IGNORE INTO regles (id, motif, categorie, source, cree) SELECT ?, ?, ?, 'defaut', ? WHERE EXISTS (SELECT 1 FROM categories WHERE id = ?)")
+        .bind(`d:${m}`, m, cat, new Date().toISOString(), cat))),
   ]],
 ];
 

@@ -238,3 +238,7 @@ small.inline { display: inline; }
 .fiche-technique { margin-top: 12px; font-size: 14px; color: var(--encre-2); }
 .fiche-technique summary { cursor: pointer; padding: 6px 0; }
 .fiche-technique pre { white-space: pre-wrap; word-break: break-all; font-size: 12px; background: var(--fond); padding: 8px; border-radius: 8px; max-height: 40vh; overflow: auto; }
+
+.op.adebiter .libelle::after { content: ' · à débiter'; color: var(--encre-2); font-size: 13px; }
+.ligne-carte { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: center; width: 100%; }
+.ligne-carte input { min-height: 40px; }

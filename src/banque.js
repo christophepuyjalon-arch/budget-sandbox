@@ -186,10 +186,13 @@ export async function convertir(compteId, liste) {
     else if (!t.credit_debit_indicator && enCentimes(t.transaction_amount?.amount) < 0) montant = -montant;
     const date = (t.booking_date || t.value_date || t.transaction_date || '').slice(0, 10);
     if (!date) continue;
-    const infos = [].concat(t.remittance_information || []).filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+    const brutTexte = [].concat(t.remittance_information || []).filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+    const { texte: infos, carte } = nettoyerLibelle(brutTexte);
     const contrepartie = (montant < 0 ? t.creditor?.name : t.debtor?.name) || t.creditor?.name || t.debtor?.name || null;
     const libelle = infos || contrepartie || t.bank_transaction_code?.description || 'Opération';
-    const statut = t.status === 'PDNG' ? 'PDNG' : 'BOOK';
+    // PDNG : en cours. AVNR : paiement carte à débit différé, pas encore débité du compte
+    // (la Caisse d'Épargne l'envoie en « OTHR », sans date de comptabilisation).
+    const statut = t.status === 'PDNG' ? 'PDNG' : t.status === 'OTHR' && !t.booking_date ? 'AVNR' : 'BOOK';
     let ref = t.entry_reference || t.transaction_id;
     if (!ref) {
       const base = `${statut}|${date}|${montant}|${libelle}`;
@@ -197,9 +200,19 @@ export async function convertir(compteId, liste) {
       vus.set(base, n);
       ref = 'h' + (await empreinte(`${base}|${n}`)).slice(0, 24);
     }
-    sortie.push({ id: `${compteId}:${ref}`, date, montant, libelle, contrepartie, statut, brut: JSON.stringify(t) });
+    sortie.push({ id: `${compteId}:${ref}`, date, montant, libelle, contrepartie, statut, carte, brut: JSON.stringify(t) });
   }
   return sortie;
+}
+
+// « SPEEDY000000296   342031******5 » → { texte: 'SPEEDY', carte: '5' }
+// Le numéro de carte masqué permet de savoir quelle carte a payé.
+export function nettoyerLibelle(texte) {
+  let carte = null;
+  let t = String(texte || '').replace(/\b\d{4,6}\*{3,}(\d{1,4})\b/, (_, fin) => { carte = fin; return ' '; });
+  t = t.replace(/([A-Za-z.])\d{5,}\b/g, '$1 ')   // codes collés au nom du commerçant
+    .replace(/\s+/g, ' ').trim();
+  return { texte: t, carte };
 }
 
 export async function empreinte(texte) {

@@ -175,6 +175,12 @@ async function router(req, env) {
     const o = await env.DB.prepare('SELECT brut FROM operations WHERE id = ?').bind(decodeURIComponent(m[1])).first();
     return repondre({ brut: o?.brut ? JSON.parse(o.brut) : null });
   }
+  if (p === '/api/cartes' && req.method === 'PUT') {
+    const { noms } = await req.json();
+    const propres = Object.fromEntries(Object.entries(noms || {}).filter(([k]) => /^\d{1,4}$/.test(k)).map(([k, v]) => [k, String(v || '').trim().slice(0, 30)]));
+    await ecrireReglage(env, 'cartes', propres).run();
+    return repondre({ ok: true });
+  }
   if (p === '/api/projets' && req.method === 'POST' || (m = p.match(/^\/api\/projets\/([^/]+)$/)) && req.method === 'PUT') {
     const pr = await req.json();
     const id = m ? decodeURIComponent(m[1]) : crypto.randomUUID();
@@ -320,13 +326,13 @@ export async function synchroniser(env, psu, seulementConnexion = null) {
         // Les opérations « en cours » sont remplacées à chaque fois par ce que dit la banque.
         env.DB.prepare("DELETE FROM operations WHERE compte = ? AND statut = 'PDNG'").bind(c.id),
         // Une seule requête pour toutes les opérations (limite de requêtes du plan gratuit).
-        env.DB.prepare(`INSERT INTO operations (id, compte, date, montant, libelle, contrepartie, statut, brut, vu)
+        env.DB.prepare(`INSERT INTO operations (id, compte, date, montant, libelle, contrepartie, statut, carte, brut, vu)
           SELECT json_extract(j.value, '$.id'), ?2, json_extract(j.value, '$.date'), json_extract(j.value, '$.montant'),
                  json_extract(j.value, '$.libelle'), json_extract(j.value, '$.contrepartie'), json_extract(j.value, '$.statut'),
-                 json_extract(j.value, '$.brut'), ?3
+                 json_extract(j.value, '$.carte'), json_extract(j.value, '$.brut'), ?3
           FROM json_each(?1) AS j WHERE true
           ON CONFLICT(id) DO UPDATE SET date = excluded.date, montant = excluded.montant, libelle = excluded.libelle,
-            contrepartie = excluded.contrepartie, statut = excluded.statut, brut = excluded.brut`)
+            contrepartie = excluded.contrepartie, statut = excluded.statut, carte = excluded.carte, brut = excluded.brut`)
           .bind(JSON.stringify(lignes), c.id, rapport.date),
         env.DB.prepare('UPDATE comptes SET solde = COALESCE(?, solde), solde_type = COALESCE(?, solde_type), solde_date = COALESCE(?, solde_date), synchro = ? WHERE id = ?')
           .bind(solde?.montant ?? null, solde?.type ?? null, solde?.date ?? null, rapport.date, c.id),
@@ -353,12 +359,12 @@ export async function synchroniser(env, psu, seulementConnexion = null) {
 async function etat(env, mois) {
   if (!/^\d{4}-\d{2}$/.test(mois || '')) mois = maintenant().slice(0, 7);
   const [debut, fin] = [`${mois}-01`, `${mois}-31`];
-  const [comptes, connexions, operations, bornes, synchro, categories, regles, projets] = await env.DB.batch([
+  const [comptes, connexions, operations, bornes, synchro, categories, regles, projets, encours, cartes, nomsCartes] = await env.DB.batch([
     env.DB.prepare(`SELECT c.id, c.nom, c.iban, c.devise, c.solde, c.solde_type, c.solde_date, c.synchro, c.masque, c.connexion, c.type, c.jour_debit, x.banque
       FROM comptes c JOIN connexions x ON x.id = c.connexion ORDER BY x.banque, c.nom`),
     env.DB.prepare('SELECT id, banque, pays, expire, cree, statut, erreur FROM connexions ORDER BY cree'),
     // Le mois demandé, plus le mois précédent pour les cartes à débit différé (débitées le mois suivant).
-    env.DB.prepare(`SELECT o.id, o.compte, o.date, o.montant, o.libelle, o.contrepartie, o.statut, o.vu, o.categorie, o.projet
+    env.DB.prepare(`SELECT o.id, o.compte, o.date, o.montant, o.libelle, o.contrepartie, o.statut, o.vu, o.categorie, o.projet, o.carte
       FROM operations o JOIN comptes c ON c.id = o.compte
       WHERE c.masque = 0 AND (o.date BETWEEN ? AND ? OR (c.type = 'carte' AND o.date BETWEEN ? AND ?))
       ORDER BY o.date DESC, o.vu DESC, o.id`).bind(debut, fin, `${precedent(mois)}-01`, `${precedent(mois)}-31`),
@@ -370,6 +376,11 @@ async function etat(env, mois) {
       COALESCE((SELECT -SUM(o.montant) FROM operations o WHERE o.projet = p.id), 0) AS depense,
       (SELECT COUNT(*) FROM operations o WHERE o.projet = p.id) AS nombre
       FROM projets p ORDER BY p.archive, p.debut`),
+    // Paiements carte pas encore débités, par compte et par carte.
+    env.DB.prepare(`SELECT o.compte, o.carte, -SUM(o.montant) AS montant, MIN(o.date) AS depuis FROM operations o
+      JOIN comptes c ON c.id = o.compte WHERE o.statut = 'AVNR' AND c.masque = 0 GROUP BY o.compte, o.carte`),
+    env.DB.prepare(`SELECT DISTINCT o.carte FROM operations o JOIN comptes c ON c.id = o.compte WHERE o.carte IS NOT NULL AND c.masque = 0`),
+    env.DB.prepare("SELECT valeur FROM reglages WHERE cle = 'cartes'"),
   ]);
   return {
     mois,
@@ -381,5 +392,8 @@ async function etat(env, mois) {
     categories: categories.results,
     regles: regles.results,
     projets: projets.results.map((p) => ({ ...p, archive: !!p.archive })),
+    encours: encours.results,
+    cartes: cartes.results.map((c) => c.carte).sort(),
+    nomsCartes: nomsCartes.results[0] ? JSON.parse(nomsCartes.results[0].valeur) : {},
   };
 }

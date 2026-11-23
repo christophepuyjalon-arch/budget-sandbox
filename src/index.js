@@ -16,6 +16,7 @@ const PAUSE_SYNCHRO = 60000;     // délai minimum entre deux synchros manuelles
 
 const maintenant = () => new Date().toISOString();
 const jourISO = (t) => new Date(t).toISOString().slice(0, 10);
+const suivant = (m) => { const d = new Date(`${m}-15T12:00:00Z`); d.setUTCMonth(d.getUTCMonth() + 1); return d.toISOString().slice(0, 7); };
 const precedent = (m) => { const d = new Date(`${m}-15T12:00:00Z`); d.setUTCMonth(d.getUTCMonth() - 1); return d.toISOString().slice(0, 7); };
 
 export default {
@@ -363,11 +364,12 @@ async function etat(env, mois) {
     env.DB.prepare(`SELECT c.id, c.nom, c.iban, c.devise, c.solde, c.solde_type, c.solde_date, c.synchro, c.masque, c.connexion, c.type, c.jour_debit, x.banque
       FROM comptes c JOIN connexions x ON x.id = c.connexion ORDER BY x.banque, c.nom`),
     env.DB.prepare('SELECT id, banque, pays, expire, cree, statut, erreur FROM connexions ORDER BY cree'),
-    // Le mois demandé, plus le mois précédent pour les cartes à débit différé (débitées le mois suivant).
+    // Le mois demandé, plus les 10 premiers jours du mois suivant : le prélèvement des cartes
+    // à débit différé (le 4) couvre les achats du mois demandé.
     env.DB.prepare(`SELECT o.id, o.compte, o.date, o.montant, o.libelle, o.contrepartie, o.statut, o.vu, o.categorie, o.projet, o.carte
       FROM operations o JOIN comptes c ON c.id = o.compte
-      WHERE c.masque = 0 AND (o.date BETWEEN ? AND ? OR (c.type = 'carte' AND o.date BETWEEN ? AND ?))
-      ORDER BY o.date DESC, o.vu DESC, o.id`).bind(debut, fin, `${precedent(mois)}-01`, `${precedent(mois)}-31`),
+      WHERE c.masque = 0 AND o.date BETWEEN ? AND ?
+      ORDER BY o.date DESC, o.vu DESC, o.id`).bind(debut, `${suivant(mois)}-10`),
     env.DB.prepare('SELECT MIN(date) AS premier FROM operations'),
     env.DB.prepare("SELECT valeur FROM reglages WHERE cle = 'synchro'"),
     env.DB.prepare('SELECT id, nom, type, budget FROM categories ORDER BY ordre'),

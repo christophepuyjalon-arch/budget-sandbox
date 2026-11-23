@@ -175,8 +175,22 @@ function calculer(d) {
   const parCat = Object.fromEntries(d.categories.map((c) => [c.id, 0]));
   const ops = [];
   let aClasser = 0;
+  // Les mois passés n'ont souvent pas le détail des paiements carte (la banque ne le transmet plus
+  // une fois débité) : le prélèvement du mois suivant compte alors comme dépense du mois.
+  const detailCartes = d.operations.some((o) => o.carte && o.date.startsWith(d.mois));
+  let cartesSansDetail = 0;
+  const debitsCartes = [];
+  if (!detailCartes) {
+    for (const o of d.operations) {
+      if (o.date > `${d.mois}-31` && o.montant < 0 && typeCompte(d, o.compte) !== 'epargne' && categorieDe(o, d) === 'differe') {
+        cartesSansDetail -= o.montant;
+        debitsCartes.push({ ...o, cat: 'differe', projetNom: null, epargne: false });
+      }
+    }
+  }
+  let depenseAClasser = 0;
   for (const o of d.operations) {
-    if (!o.date.startsWith(d.mois)) continue;     // mois précédent des cartes : sert seulement à l'encours
+    if (!o.date.startsWith(d.mois)) continue;     // début du mois suivant : sert seulement au prélèvement carte
     const epargne = typeCompte(d, o.compte) === 'epargne';
     const projet = o.projet ? d.projets.find((p) => p.id === o.projet) : null;
     const cat = epargne ? null : categorieDe(o, d);
@@ -184,14 +198,15 @@ function calculer(d) {
     ops.push(x);
     if (epargne || projet) continue;
     if (cat) parCat[cat] -= o.montant;
-    else aClasser++;
+    else { aClasser++; depenseAClasser -= o.montant; }
   }
 
   const cats = d.categories.map((c) => ({ ...c, depense: parCat[c.id] || 0 }));
   const budgetes = cats.filter((c) => c.type === 'fixe' || c.type === 'enveloppe');
   const enveloppes = cats.filter((c) => c.type === 'enveloppe');
   const totalBudget = budgetes.reduce((s, c) => s + c.budget, 0);
-  const totalDepense = budgetes.reduce((s, c) => s + Math.max(c.depense, 0), 0);
+  // Ce qui n'est pas encore classé et les cartes sans détail comptent aussi : ce sont des dépenses réelles.
+  const totalDepense = budgetes.reduce((s, c) => s + Math.max(c.depense, 0), 0) + Math.max(depenseAClasser, 0) + cartesSansDetail;
   const resteEnveloppes = enveloppes.reduce((s, c) => s + Math.max(c.budget - c.depense, 0), 0);
   const joursRestants = enCours ? nbJours - jour + 1 : 0;
 
@@ -207,7 +222,7 @@ function calculer(d) {
   return {
     enCours, passe, jour, nbJours, fraction, cats, ops, aClasser, totalBudget, totalDepense,
     resteEnveloppes, joursRestants, courant, encours, encoursParCarte, epargne,
-    revenus: parCat.revenus || 0,
+    revenus: parCat.revenus || 0, depenseAClasser, cartesSansDetail, debitsCartes,
   };
 }
 
@@ -290,6 +305,8 @@ function dessinerAccueil(d, k) {
     `${periode(p)} · ${p.depense > p.budget ? `dépassé de ${fmt(p.depense - p.budget)}` : `reste ${fmt(p.budget - p.depense)}`}`)).join('');
 
   const suivi = k.cats.filter((c) => c.type === 'suivi' && c.depense);
+  if (k.depenseAClasser > 0) suivi.unshift({ id: '__aclasser', nom: 'À classer (compté dans le reste)', depense: k.depenseAClasser });
+  if (k.cartesSansDetail) suivi.unshift({ id: 'differe', nom: 'Cartes, détail non transmis par la banque', depense: k.cartesSansDetail });
   if (k.revenus) suivi.push({ id: 'revenus', nom: 'Revenus du mois', depense: -k.revenus, revenu: true });
   $('section-suivi').hidden = !suivi.length;
   $('suivi').innerHTML = suivi.map((c) => `<li><button data-cat="${echapper(c.id)}"><span>${echapper(c.nom)}</span>
@@ -343,6 +360,7 @@ let filtreCat = null;
 $('page-accueil').addEventListener('click', (e) => {
   const b = e.target.closest('[data-cat]');
   if (!b) return;
+  if (b.dataset.cat === '__aclasser') { filtre = 'aclasser'; afficherPage('operations'); return; }
   filtreCat = b.dataset.cat;
   filtre = 'categorie';
   afficherPage('operations');
@@ -409,7 +427,8 @@ function dessinerOperations(d, k) {
   let titreFiltre = '';
   if (filtre === 'aclasser') liste = liste.filter((o) => !o.cat && !o.projet && !o.epargne);
   if (filtre === 'categorie') {
-    liste = filtreCat === 'revenus' ? liste.filter((o) => o.cat === 'revenus' && !o.projet) : liste.filter((o) => o.cat === filtreCat && !o.projet && !o.epargne);
+    liste = filtreCat === 'differe' && k.cartesSansDetail ? k.debitsCartes
+      : filtreCat === 'revenus' ? liste.filter((o) => o.cat === 'revenus' && !o.projet) : liste.filter((o) => o.cat === filtreCat && !o.projet && !o.epargne);
     titreFiltre = `<p class="filtre-actif">${echapper(nomCategorie(d, filtreCat))} <button data-filtre="toutes">× tout afficher</button></p>`;
   }
   const entrees = k.ops.filter((o) => o.montant > 0).reduce((s, o) => s + o.montant, 0);

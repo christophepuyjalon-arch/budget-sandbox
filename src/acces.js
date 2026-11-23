@@ -91,7 +91,14 @@ export async function activer(env, code, nomPropose) {
     const h = await empreinte(normaliserCode(brut));
     const inv = await env.DB.prepare('UPDATE invitations SET restant = restant - 1 WHERE code = ? AND restant > 0 AND expire > ? RETURNING nom')
       .bind(h, maintenant()).first();
-    if (!inv) { await noterEchec(env); return { erreur: 'Code inconnu ou expiré. Demande une nouvelle invitation.' }; }
+    if (!inv) {
+      await noterEchec(env);
+      // Aide au premier lancement : signaler un secret absent plutôt qu'un « code inconnu ».
+      if (!env.CODE_INSTALLATION && !(await env.DB.prepare('SELECT 1 FROM appareils WHERE admin = 1 LIMIT 1').first())) {
+        return { erreur: 'Le secret CODE_INSTALLATION est absent du serveur (Cloudflare > Worker budget > Settings > Variables and Secrets).' };
+      }
+      return { erreur: 'Code inconnu ou expiré. Demande une nouvelle invitation.' };
+    }
     nom = inv.nom;
     admin = 0;
   }

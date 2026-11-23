@@ -246,11 +246,13 @@ function afficherApp() {
   charger();
 }
 
-async function charger() {
+async function charger({ garderHistorique = false } = {}) {
   try {
     donnees = await api(`/api/etat?mois=${mois}`);
     ecrire(`etat:${mois}`, donnees);
+    if (!garderHistorique) historique = null;   // une modification a pu changer le classement
     dessiner();
+    rafraichirVuesHistorique();
   } catch (e) {
     if (e instanceof NonActive) return afficherActivation(null);
     statut(donnees ? 'Hors ligne : dernières données connues.' : e.message);
@@ -269,6 +271,7 @@ function dessiner() {
   document.querySelectorAll('.mois-suiv').forEach((b) => { b.disabled = d.mois >= moisCourant(); });
   dessinerAccueil(d, calcul);
   dessinerOperations(d, calcul);
+  remplirChoixCategories();
   if (!$('page-reglages').hidden) dessinerReglages();
 }
 
@@ -407,7 +410,7 @@ function changerMois(n) {
   const cache = lire(`etat:${mois}`);
   if (cache?.categories) { donnees = cache; dessiner(); }
   else $('operations').innerHTML = '<p class="vide">Chargement…</p>';
-  charger();
+  charger({ garderHistorique: true });
 }
 
 $('btn-sync').addEventListener('click', async () => {
@@ -446,29 +449,37 @@ function dessinerOperations(d, k) {
   $('ecart').textContent = fmtSigne(entrees + sorties);
   $('ecart').className = entrees + sorties < 0 ? 'negatif' : 'positif';
 
-  const multi = d.comptes.length > 1;
-  const nomsComptes = Object.fromEntries(d.comptes.map((c) => [c.id, c.nom]));
   let html = titreFiltre, jourCourant = null;
+  opsAffichees.clear();
   for (const o of liste) {
     if (o.date !== jourCourant) { jourCourant = o.date; html += `<h3 class="jour">${nomJour(o.date)}</h3>`; }
-    const etiquette = o.epargne ? 'Épargne' : o.projetNom ? `Projet · ${o.projetNom}` : o.cat ? nomCategorie(d, o.cat) : 'À classer';
-    const detail = [o.contrepartie && o.contrepartie !== o.libelle ? o.contrepartie : null,
-      o.carte ? nomCarte(d, o.carte) : multi ? nomsComptes[o.compte] : null].filter(Boolean).join(' · ');
-    html += `<button class="op ${o.statut === 'PDNG' ? 'encours' : o.statut === 'AVNR' ? 'adebiter' : ''}" data-op="${echapper(o.id)}">
-      <span class="libelle">${echapper(o.libelle)}</span>
-      <span class="montant ${o.montant > 0 ? 'positif' : ''}">${fmtSigne(o.montant)}</span>
-      ${o.commentaire ? `<span class="note">${echapper(o.commentaire)}</span>` : ''}
-      <span class="puce-cat ${!o.cat && !o.projetNom && !o.epargne ? 'vide' : ''} ${o.categorie || (o.projet && o.projet !== '') ? 'manuel' : ''}">${echapper(etiquette)}</span>
-      ${detail ? `<small>${echapper(detail)}</small>` : ''}</button>`;
+    html += htmlOp(o, d);
   }
   $('operations').innerHTML = html || `<p class="vide">${filtre === 'aclasser' ? 'Tout est classé ✓' : 'Aucune opération.'}</p>`;
+}
+
+// Une ligne d'opération (liste du mois et résultats de recherche).
+const opsAffichees = new Map();
+function htmlOp(o, d, avecDate = false) {
+  opsAffichees.set(o.id, o);
+  const etiquette = o.epargne ? 'Épargne' : o.projetNom ? `Projet · ${o.projetNom}` : o.cat ? nomCategorie(d, o.cat) : 'À classer';
+  const nomCompte = d.comptes.length > 1 ? d.comptes.find((c) => c.id === o.compte)?.nom : null;
+  const detail = [avecDate ? new Date(`${o.date}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : null,
+    o.contrepartie && o.contrepartie !== o.libelle ? o.contrepartie : null,
+    o.carte ? nomCarte(d, o.carte) : nomCompte].filter(Boolean).join(' · ');
+  return `<button class="op ${o.statut === 'PDNG' ? 'encours' : o.statut === 'AVNR' ? 'adebiter' : ''}" data-op="${echapper(o.id)}">
+    <span class="libelle">${echapper(o.libelle)}</span>
+    <span class="montant ${o.montant > 0 ? 'positif' : ''}">${fmtSigne(o.montant)}</span>
+    ${o.commentaire ? `<span class="note">${echapper(o.commentaire)}</span>` : ''}
+    <span class="puce-cat ${!o.cat && !o.projetNom && !o.epargne ? 'vide' : ''} ${o.categorie || (o.projet && o.projet !== '') ? 'manuel' : ''}">${echapper(etiquette)}</span>
+    ${detail ? `<small>${echapper(detail)}</small>` : ''}</button>`;
 }
 
 document.querySelectorAll('.filtres [data-filtre]').forEach((b) => b.addEventListener('click', () => { filtre = b.dataset.filtre; dessiner(); }));
 $('operations').addEventListener('click', (e) => {
   if (e.target.closest('[data-filtre]')) { filtre = 'toutes'; dessiner(); return; }
   const b = e.target.closest('[data-op]');
-  if (b) ouvrirFiche(calcul.ops.find((o) => o.id === b.dataset.op));
+  if (b) ouvrirFiche(opsAffichees.get(b.dataset.op));
 });
 
 // ---------- fiche d'une opération ----------
@@ -553,10 +564,11 @@ document.querySelectorAll('.onglets button').forEach((b) => b.addEventListener('
 }));
 function afficherPage(nom) {
   document.querySelectorAll('.onglets button').forEach((b) => b.classList.toggle('actif', b.dataset.page === nom));
-  for (const p of ['accueil', 'operations', 'reglages']) $(`page-${p}`).hidden = nom !== p;
+  for (const p of ['accueil', 'operations', 'graphiques', 'reglages']) $(`page-${p}`).hidden = nom !== p;
   scrollTo(0, 0);
   if (nom === 'operations' && donnees?.categories) dessinerOperations(donnees, calcul);
   if (nom === 'reglages') dessinerReglages();
+  if (nom === 'graphiques') dessinerGraphiques();
 }
 
 // ---------- réglages ----------
@@ -826,6 +838,256 @@ $('btn-deconnexion').addEventListener('click', async () => {
   await api('/api/deconnexion', { method: 'POST' }).catch(() => {});
   try { localStorage.clear(); } catch { /* rien */ }
   location.href = '/';
+});
+
+// ---------- historique (12 mois) : recherche et graphiques ----------
+let historique = null, historiqueEnCours = null;
+async function chargerHistorique() {
+  if (historique) return historique;
+  historiqueEnCours ??= api('/api/historique').then((r) => {
+    historique = r;
+    return r;
+  }).finally(() => { historiqueEnCours = null; });
+  return historiqueEnCours;
+}
+// Ajoute catégorie, projet et commentaire calculés à une opération de l'historique.
+function enrichir(o, d) {
+  const epargne = typeCompte(d, o.compte) === 'epargne';
+  const projet = o.projet ? d.projets.find((p) => p.id === o.projet) : null;
+  return { ...o, cat: epargne ? null : categorieDe(o, d), projetNom: projet?.nom || null, epargne, commentaire: noteDe(o) };
+}
+function opsHistorique() {
+  const d = donnees;
+  preparerRegles(d);
+  return historique.operations.map((o) => enrichir(o, d));
+}
+function rafraichirVuesHistorique() {
+  if (rechercheActive()) rechercher();
+  if (!$('page-graphiques').hidden) dessinerGraphiques();
+}
+
+// --- Recherche ---
+const rechercheActive = () => $('recherche').value.trim() || $('recherche-cat').value;
+function remplirChoixCategories() {
+  const d = donnees;
+  if (!d?.categories) return;
+  const actuel = $('recherche-cat').value;
+  $('recherche-cat').innerHTML = '<option value="">Toutes les catégories</option><option value="__aclasser">À classer</option>'
+    + d.categories.map((c) => `<option value="c:${echapper(c.id)}">${echapper(c.nom)}</option>`).join('')
+    + d.projets.map((p) => `<option value="p:${echapper(p.id)}">Projet · ${echapper(p.nom)}</option>`).join('');
+  $('recherche-cat').value = actuel;
+}
+let minuterieRecherche = null;
+$('recherche').addEventListener('input', () => { clearTimeout(minuterieRecherche); minuterieRecherche = setTimeout(rechercher, 200); });
+$('recherche-cat').addEventListener('change', rechercher);
+$('recherche-cat').addEventListener('focus', remplirChoixCategories);
+
+async function rechercher() {
+  const actif = rechercheActive();
+  $('resultats').hidden = !actif;
+  $('vue-mois').hidden = !!actif;
+  if (!actif) return;
+  $('resultats-resume').textContent = 'Recherche dans les 12 derniers mois…';
+  try { await chargerHistorique(); } catch (e) { $('resultats-resume').textContent = e.message; return; }
+  const d = donnees;
+  const q = normaliser($('recherche').value);
+  const montantCherche = /^\d+([.,]\d{1,2})?$/.test(q) ? Math.round(Number(q.replace(',', '.')) * 100) : null;
+  const filtreC = $('recherche-cat').value;
+  const res = opsHistorique().filter((o) => {
+    if (filtreC === '__aclasser' && (o.cat || o.projet || o.epargne)) return false;
+    if (filtreC.startsWith('c:') && (o.cat !== filtreC.slice(2) || o.projet)) return false;
+    if (filtreC.startsWith('p:') && o.projet !== filtreC.slice(2)) return false;
+    if (!q) return true;
+    if (montantCherche !== null && Math.abs(o.montant) === montantCherche) return true;
+    return normaliser(`${o.libelle} ${o.contrepartie || ''} ${o.commentaire || ''}`).includes(q);
+  });
+  const total = res.reduce((t, o) => t + o.montant, 0);
+  $('resultats-resume').textContent = res.length
+    ? `${res.length} opération${res.length > 1 ? 's' : ''} · total ${fmtSigne(total)}`
+    : 'Aucune opération ne correspond.';
+  opsAffichees.clear();
+  let html = '', moisCourantRes = null;
+  const parMois = {};
+  for (const o of res) parMois[o.date.slice(0, 7)] = (parMois[o.date.slice(0, 7)] || 0) + o.montant;
+  for (const o of res.slice(0, 400)) {
+    const m = o.date.slice(0, 7);
+    if (m !== moisCourantRes) { moisCourantRes = m; html += `<h3 class="mois-resultat">${nomMois(m)}<span>${fmtSigne(parMois[m])}</span></h3>`; }
+    html += htmlOp(o, d, true);
+  }
+  if (res.length > 400) html += '<p class="vide">Seules les 400 plus récentes sont affichées : précise la recherche.</p>';
+  $('resultats-liste').innerHTML = html;
+}
+$('resultats-liste').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-op]');
+  if (b) ouvrirFiche(opsAffichees.get(b.dataset.op));
+});
+
+// --- Graphiques ---
+const graphs = {};
+let catGraph = 'courses';
+const couleur = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const eurosCourts = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+const fmtCourt = (c) => eurosCourts.format(c / 100);
+const moisCourtNom = (m) => new Date(`${m}-15T12:00:00`).toLocaleDateString('fr-FR', { month: 'short' }).replace('.', '');
+
+function listeMois(depuis) {
+  const l = [];
+  for (let m = depuis; m <= moisCourant(); m = decalerMois(m, 1)) l.push(m);
+  return l.slice(-12);
+}
+function tableau(id, entetes, lignes) {
+  $(id).innerHTML = `<table><thead><tr>${entetes.map((e) => `<th>${echapper(e)}</th>`).join('')}</tr></thead><tbody>${
+    lignes.map((l) => `<tr>${l.map((c) => `<td>${echapper(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+}
+function optionsCommunes(extra = {}) {
+  const encre2 = couleur('--encre-2'), filet = couleur('--filet');
+  return {
+    responsive: true, maintainAspectRatio: false, animation: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { display: false },
+      tooltip: { callbacks: { label: (c) => `${c.dataset.label} : ${fmt(c.raw * 100)}` } },
+    },
+    scales: {
+      x: { grid: { display: false }, ticks: { color: encre2, maxRotation: 0, autoSkipPadding: 8 }, border: { color: filet } },
+      y: { grid: { color: filet }, border: { display: false }, ticks: { color: encre2, callback: (v) => eurosCourts.format(v), maxTicksLimit: 5 } },
+    },
+    ...extra,
+  };
+}
+function graphique(id, config) {
+  graphs[id]?.destroy();
+  graphs[id] = new Chart($(id), config);
+}
+
+async function dessinerGraphiques() {
+  if (!donnees?.categories) return;
+  if (typeof Chart === 'undefined') { setTimeout(dessinerGraphiques, 200); return; }
+  $('graph-statut').textContent = historique ? '' : 'Chargement de l’historique…';
+  try { await chargerHistorique(); } catch (e) { $('graph-statut').textContent = e.message; return; }
+  $('graph-statut').textContent = '';
+  const d = donnees;
+  const ops = opsHistorique().filter((o) => !o.epargne);
+  const types = Object.fromEntries(d.categories.map((c) => [c.id, c.type]));
+  const moisL = listeMois(historique.depuis);
+  const s1 = couleur('--serie-1'), s2 = couleur('--serie-2'), s3 = couleur('--serie-3'), surface = couleur('--surface'), encre2 = couleur('--encre-2');
+  const budgetMensuel = d.categories.filter((c) => c.type === 'fixe' || c.type === 'enveloppe').reduce((t, c) => t + c.budget, 0);
+
+  // 1. Dépenses par mois : budget du mois / autres dépenses / projets
+  const parMois = Object.fromEntries(moisL.map((m) => [m, { budget: 0, autres: 0, projets: 0 }]));
+  for (const o of ops) {
+    const b = parMois[o.date.slice(0, 7)];
+    if (!b) continue;
+    if (o.projet) { b.projets -= o.montant; continue; }
+    const t = o.cat ? types[o.cat] : 'aclasser';
+    if (t === 'hors') continue;
+    if (t === 'suivi') b.autres -= o.montant;
+    else b.budget -= o.montant;
+  }
+  const series = [['Budget du mois', 'budget', s1], ['Autres dépenses', 'autres', s2], ['Projets', 'projets', s3]];
+  $('legende-mois').innerHTML = series.map(([n, , c]) => `<span><i style="background:${c}"></i>${n}</span>`).join('')
+    + '<span><i class="trait"></i>Budget mensuel</span>';
+  graphique('g-mois', {
+    type: 'bar',
+    data: {
+      labels: moisL.map(moisCourtNom),
+      datasets: [
+        ...series.map(([n, k, c]) => ({ label: n, data: moisL.map((m) => Math.max(parMois[m][k], 0) / 100), backgroundColor: c,
+          borderColor: surface, borderWidth: { top: 2 }, borderSkipped: 'bottom', borderRadius: 4, maxBarThickness: 22, stack: 's' })),
+        { type: 'line', label: 'Budget mensuel', data: moisL.map(() => budgetMensuel / 100), borderColor: encre2, borderWidth: 1.5,
+          borderDash: [5, 4], pointRadius: 0, pointHitRadius: 0 },
+      ],
+    },
+    options: optionsCommunes({ scales: { ...optionsCommunes().scales, x: { ...optionsCommunes().scales.x, stacked: true }, y: { ...optionsCommunes().scales.y, stacked: true } } }),
+  });
+  tableau('t-mois', ['Mois', 'Budget du mois', 'Autres', 'Projets', 'Total'],
+    moisL.map((m) => { const b = parMois[m]; return [nomMois(m), fmt(b.budget), fmt(b.autres), fmt(b.projets), fmt(b.budget + b.autres + b.projets)]; }));
+
+  // 2. Une catégorie dans le temps
+  const choix = d.categories.filter((c) => c.type !== 'hors');
+  if (!choix.some((c) => c.id === catGraph)) catGraph = choix[0]?.id;
+  $('choix-cat-graph').innerHTML = choix.map((c) => `<button type="button" role="radio" aria-checked="${c.id === catGraph}" data-g="${echapper(c.id)}">${echapper(c.nom)}</button>`).join('');
+  const cat = d.categories.find((c) => c.id === catGraph);
+  const valeurs = moisL.map((m) => ops.filter((o) => !o.projet && o.cat === catGraph && o.date.startsWith(m)).reduce((t, o) => t - o.montant, 0));
+  graphique('g-cat', {
+    type: 'bar',
+    data: {
+      labels: moisL.map(moisCourtNom),
+      datasets: [
+        { label: cat?.nom || '', data: valeurs.map((v) => v / 100), backgroundColor: s1, borderRadius: 4, borderSkipped: 'bottom', maxBarThickness: 22 },
+        ...(cat?.budget ? [{ type: 'line', label: 'Budget', data: moisL.map(() => cat.budget / 100), borderColor: encre2, borderWidth: 1.5, borderDash: [5, 4], pointRadius: 0, pointHitRadius: 0 }] : []),
+      ],
+    },
+    options: optionsCommunes(),
+  });
+  const moyenne = valeurs.slice(0, -1).filter((v) => v).reduce((t, v, _, a) => t + v / a.length, 0);
+  $('g-cat').setAttribute('aria-label', `${cat?.nom} par mois, moyenne ${fmt(moyenne)}`);
+  tableau('t-cat', ['Mois', cat?.nom || ''], moisL.map((m, i) => [nomMois(m), fmt(valeurs[i])]).concat([['Moyenne (mois complets)', fmt(moyenne)]]));
+
+  // 3. Répartition du mois affiché (barres horizontales triées)
+  const moisR = donnees.mois;
+  $('titre-repartition').textContent = `Répartition : ${nomMois(moisR)}`;
+  const rep = {};
+  for (const o of ops) {
+    if (!o.date.startsWith(moisR)) continue;
+    const cle = o.projet ? `Projet · ${o.projetNom}` : o.cat ? (types[o.cat] === 'hors' ? null : nomCategorie(d, o.cat)) : 'À classer';
+    if (cle) rep[cle] = (rep[cle] || 0) - o.montant;
+  }
+  const lignesRep = Object.entries(rep).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  $('cadre-repartition').style.height = `${Math.max(120, lignesRep.length * 34 + 30)}px`;
+  graphique('g-repartition', {
+    type: 'bar',
+    data: { labels: lignesRep.map(([n]) => n), datasets: [{ label: 'Dépensé', data: lignesRep.map(([, v]) => v / 100), backgroundColor: s1, borderRadius: 4, borderSkipped: 'left', maxBarThickness: 18 }] },
+    options: (() => { const o = optionsCommunes({ indexAxis: 'y' }); o.interaction = { mode: 'nearest', axis: 'y', intersect: false };
+      o.scales = { x: { ...o.scales.y, grid: { color: couleur('--filet') } }, y: { grid: { display: false }, border: { display: false }, ticks: { color: couleur('--encre'), autoSkip: false,
+        callback(v) { const n = this.getLabelForValue(v); return n.length > 20 ? `${n.slice(0, 19)}…` : n; } } } };
+      o.plugins.tooltip.callbacks.title = (items) => items[0].label; return o; })(),
+  });
+  tableau('t-repartition', ['Catégorie', 'Dépensé'], lignesRep.map(([n, v]) => [n, fmt(v)]));
+
+  // 4. Solde du compte, reconstitué à rebours depuis le solde actuel
+  const courants = d.comptes.filter((c) => !c.masque && c.type !== 'epargne');
+  let solde = courants.reduce((t, c) => t + (c.solde || 0), 0);
+  const ids = new Set(courants.map((c) => c.id));
+  const mouvements = {};
+  for (const o of historique.operations) {
+    if (!ids.has(o.compte) || o.statut !== 'BOOK') continue;
+    mouvements[o.date_compta] = (mouvements[o.date_compta] || 0) + o.montant;
+  }
+  const jours = [];
+  const fin = new Date(); const debut = new Date(`${moisL[0]}-01T12:00:00`);
+  for (let j = new Date(fin); j >= debut; j.setDate(j.getDate() - 1)) {
+    const iso = isoLocal(j);
+    jours.push([iso, solde]);
+    solde -= mouvements[iso] || 0;   // solde de la veille au soir
+  }
+  jours.reverse();
+  graphique('g-solde', {
+    type: 'line',
+    data: { labels: jours.map(([j]) => j), datasets: [{ label: 'Solde', data: jours.map(([, v]) => v / 100), borderColor: s1, borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, tension: 0, fill: false }] },
+    options: (() => {
+      const o = optionsCommunes();
+      // Un mois sur deux sur un écran de téléphone, pour que les noms ne se chevauchent pas.
+      const pas = $('g-solde').parentElement.clientWidth < 520 ? 2 : 1;
+      const premiers = jours.map(([j]) => j).filter((j) => j.endsWith('-01'));
+      o.scales.x.ticks.callback = function (v) {
+        const j = this.getLabelForValue(v);
+        const i = premiers.indexOf(j);
+        return i >= 0 && (premiers.length - 1 - i) % pas === 0 ? moisCourtNom(j.slice(0, 7)) : null;
+      };
+      o.scales.x.ticks.autoSkip = false;
+      o.scales.y.grid.color = (c) => (c.tick.value === 0 ? couleur('--encre-2') : couleur('--filet'));
+      o.plugins.tooltip.callbacks.title = (items) => new Date(`${items[0].label}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+      return o;
+    })(),
+  });
+  tableau('t-solde', ['Fin de mois', 'Solde'], moisL.map((m) => { const dernier = jours.filter(([j]) => j.startsWith(m)).pop(); return [nomMois(m), dernier ? fmt(dernier[1]) : '–']; }));
+}
+$('choix-cat-graph').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-g]');
+  if (!b) return;
+  catGraph = b.dataset.g;
+  dessinerGraphiques();
 });
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});

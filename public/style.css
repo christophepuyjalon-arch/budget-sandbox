@@ -9,6 +9,7 @@
   --positif: #1C6B47;
   --alerte: #B4302A;
   --attention: #9A6400;
+  --serie-1: #2a78d6; --serie-2: #eb6834; --serie-3: #1baf7a;
   --titre: 'Barlow Condensed', 'Roboto Condensed', 'Arial Narrow', sans-serif;
   --texte: 'Barlow', Roboto, system-ui, sans-serif;
   box-sizing: border-box;
@@ -18,6 +19,7 @@
     color-scheme: dark;
     --fond: #0F1512; --surface: #18211C; --encre: #E3EBE6; --encre-2: #95A39A;
     --filet: #28352E; --accent: #5CC492; --positif: #5CC492; --alerte: #F07A73; --attention: #E3B04B;
+    --serie-1: #3987e5; --serie-2: #d95926; --serie-3: #199e70;
   }
 }
 *, *::before, *::after { box-sizing: inherit; }
@@ -244,3 +246,25 @@ small.inline { display: inline; }
 .ligne-carte input { min-height: 40px; }
 
 .op .note { grid-column: 1 / -1; font-size: 14px; font-style: italic; color: var(--encre); }
+
+/* Recherche */
+.recherche { display: grid; grid-template-columns: 1fr; gap: 8px; margin: 4px 0 12px; }
+.resume-recherche { font-weight: 500; margin: 0 0 4px; }
+.mois-resultat { display: flex; justify-content: space-between; margin: 18px 0 2px; font-family: var(--titre); font-weight: 600; font-size: 17px; }
+.mois-resultat::first-letter { text-transform: uppercase; }
+.mois-resultat span { font-family: var(--texte); font-weight: 500; font-size: 15px; font-variant-numeric: tabular-nums; }
+
+/* Graphiques */
+.graphique { background: var(--surface); border-radius: 12px; padding: 14px 12px 10px; margin: 14px 0; }
+.graphique .discret-texte { margin: 2px 0 8px; }
+.cadre-graph { position: relative; height: 240px; margin-top: 6px; }
+.legende { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--encre-2); margin: 6px 0 0; }
+.legende i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.legende i.trait { height: 0; border-top: 2px dashed var(--encre-2); border-radius: 0; width: 14px; vertical-align: 3px; }
+.puces.petites button { min-height: 34px; padding: 4px 10px; font-size: 14px; }
+.graphique details { margin-top: 8px; font-size: 14px; color: var(--encre-2); }
+.graphique summary { cursor: pointer; padding: 6px 0; }
+.table-defile { overflow-x: auto; }
+.table-defile table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; color: var(--encre); }
+.table-defile th, .table-defile td { padding: 4px 6px; border-bottom: 1px solid var(--filet); text-align: right; white-space: nowrap; }
+.table-defile th:first-child, .table-defile td:first-child { text-align: left; }

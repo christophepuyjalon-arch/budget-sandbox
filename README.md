@@ -4,11 +4,15 @@ Budget récupère automatiquement les opérations de vos comptes bancaires (via 
 
 - **Aujourd’hui** : reste à dépenser du mois, anneaux des dépenses courantes (le trait noir marque le rythme attendu à cette date), charges fixes, projets, solde disponible une fois les cartes à débit différé déduites.
 - **Opérations** : liste du mois. Toucher une opération permet de la classer ; « toujours classer ainsi » crée une règle pour les suivantes.
+- **Recherche** (en haut de l’onglet Opérations) : texte libre (libellé, commentaire, montant) et/ou catégorie, sur les 12 derniers mois, avec le total.
+- **Graphiques** : dépenses par mois face au budget, une catégorie dans le temps, répartition du mois, évolution du solde.
 - **Réglages** : budgets mensuels, projets (budget sur une période, rattachement automatique par motif), type de chaque compte (courant, carte à débit différé, épargne).
 
 Le classement se fait sur le téléphone à partir de règles (une liste de départ de commerçants courants, puis les tiennes). Les dépenses rattachées à un projet ne comptent pas dans les budgets du mois. Les comptes d’épargne n’entrent pas dans le budget.
 
 À venir : prévision du solde jusqu’à la fin du mois, bouton « Analyser avec Claude », alertes.
+
+Chaque opération peut recevoir un commentaire, et « faire de même pour les opérations contenant… » l’applique automatiquement aux suivantes.
 
 ## Comment c’est organisé
 

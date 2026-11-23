@@ -165,10 +165,14 @@ async function router(req, env) {
   }
   // Opérations d'une période (pour l'analyse et les moyennes), en format compact.
   if (p === '/api/historique' && req.method === 'GET') {
-    const depuis = /^\d{4}-\d{2}$/.test(url.searchParams.get('depuis') || '') ? url.searchParams.get('depuis') : maintenant().slice(0, 7);
-    const r = await env.DB.prepare(`SELECT o.compte, o.date, o.montant, o.libelle, o.contrepartie, o.categorie, o.projet, o.note, o.carte
-      FROM operations o JOIN comptes c ON c.id = o.compte WHERE c.masque = 0 AND o.date >= ? ORDER BY o.date`).bind(`${depuis}-01`).all();
-    return repondre({ operations: r.results });
+    // Opérations depuis un mois donné (13 mois par défaut), en format compact, pour la recherche,
+    // les graphiques et l'analyse. date_compta : jour où l'argent a vraiment quitté le compte.
+    const d = new Date(); d.setUTCMonth(d.getUTCMonth() - 12);
+    const depuis = /^\d{4}-\d{2}$/.test(url.searchParams.get('depuis') || '') ? url.searchParams.get('depuis') : d.toISOString().slice(0, 7);
+    const r = await env.DB.prepare(`SELECT o.id, o.compte, o.date, o.montant, o.libelle, o.contrepartie, o.statut, o.categorie, o.projet, o.note, o.carte,
+        COALESCE(json_extract(o.brut, '$.booking_date'), o.date) AS date_compta
+      FROM operations o JOIN comptes c ON c.id = o.compte WHERE c.masque = 0 AND o.date >= ? ORDER BY o.date DESC, o.id`).bind(`${depuis}-01`).all();
+    return repondre({ depuis, operations: r.results });
   }
 
   if (p === '/api/deconnexion' && req.method === 'POST') {

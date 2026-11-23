@@ -1,8 +1,8 @@
 // Budget — fonctionnement hors ligne : l'interface est mise en cache.
 // Les données (/api/...) ne passent jamais par le cache du service worker :
 // l'app garde elle-même la dernière version reçue.
-const CACHE = 'budget-v8';
-const COQUILLE = ['/', '/style.css', '/app.js', '/vendor/qrcode.js', '/manifest.webmanifest', '/icons/icon-192.png'];
+const CACHE = 'budget-v9';
+const COQUILLE = ['/', '/style.css', '/app.js', '/vendor/qrcode.js', '/vendor/chart.umd.js', '/manifest.webmanifest', '/icons/icon-192.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(COQUILLE)).then(() => self.skipWaiting()));

@@ -122,6 +122,15 @@
 <!-- ===== Opérations ===== -->
 <div id="page-operations" class="page" hidden>
   <header class="entete"><h1>Opérations</h1></header>
+  <div class="recherche" role="search">
+    <input id="recherche" type="search" placeholder="Rechercher : libellé, commentaire, montant…" aria-label="Rechercher dans toutes les opérations" autocomplete="off">
+    <select id="recherche-cat" aria-label="Filtrer par catégorie"></select>
+  </div>
+  <div id="resultats" hidden>
+    <p id="resultats-resume" class="resume-recherche"></p>
+    <div id="resultats-liste" class="operations"></div>
+  </div>
+  <div id="vue-mois">
   <div class="navmois">
     <button class="fleche mois-prec" aria-label="Mois précédent">‹</button>
     <h2 class="mois-nom">–</h2>
@@ -137,6 +146,41 @@
     <div><span class="etiquette">Écart</span><b id="ecart">–</b></div>
   </div>
   <div id="operations" class="operations"></div>
+  </div>
+</div>
+
+<!-- ===== Graphiques ===== -->
+<div id="page-graphiques" class="page" hidden>
+  <header class="entete"><h1>Graphiques</h1></header>
+  <p id="graph-statut" class="statut"></p>
+
+  <section class="graphique">
+    <h2>Dépenses par mois</h2>
+    <p class="discret-texte">Le trait pointillé marque le budget mensuel (charges fixes + dépenses courantes).</p>
+    <div class="legende" id="legende-mois"></div>
+    <div class="cadre-graph"><canvas id="g-mois" aria-label="Dépenses par mois, sur 12 mois" role="img"></canvas></div>
+    <details><summary>Voir les chiffres</summary><div id="t-mois" class="table-defile"></div></details>
+  </section>
+
+  <section class="graphique">
+    <h2>Une catégorie dans le temps</h2>
+    <div id="choix-cat-graph" class="puces petites" role="radiogroup" aria-label="Catégorie"></div>
+    <div class="cadre-graph"><canvas id="g-cat" role="img"></canvas></div>
+    <details><summary>Voir les chiffres</summary><div id="t-cat" class="table-defile"></div></details>
+  </section>
+
+  <section class="graphique">
+    <h2 id="titre-repartition">Répartition du mois</h2>
+    <div class="cadre-graph haut-variable" id="cadre-repartition"><canvas id="g-repartition" role="img"></canvas></div>
+    <details><summary>Voir les chiffres</summary><div id="t-repartition" class="table-defile"></div></details>
+  </section>
+
+  <section class="graphique">
+    <h2>Solde du compte</h2>
+    <p class="discret-texte">Solde en fin de journée, reconstitué à partir du solde actuel et des opérations débitées.</p>
+    <div class="cadre-graph"><canvas id="g-solde" aria-label="Évolution du solde du compte" role="img"></canvas></div>
+    <details><summary>Voir les chiffres</summary><div id="t-solde" class="table-defile"></div></details>
+  </section>
 </div>
 
 <!-- ===== Réglages ===== -->
@@ -267,6 +311,10 @@
     <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
     Opérations
   </button>
+  <button data-page="graphiques">
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M5 20V11M10 20V5M15 20v-7M20 20V9" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+    Graphiques
+  </button>
   <button data-page="reglages">
     <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
     Réglages
@@ -275,6 +323,7 @@
 </main>
 
 <script src="/vendor/qrcode.js"></script>
+<script src="/vendor/chart.umd.js" defer></script>
 <script src="/app.js"></script>
 </body>
 </html>

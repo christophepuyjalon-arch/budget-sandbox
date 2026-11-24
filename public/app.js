@@ -1880,8 +1880,9 @@ const GUIDE = [
   ['🎯', 'Le chiffre du haut', 'C’est ce qu’il reste ce mois-ci pour le quotidien : courses, shopping, transports. Quand il passe <b class="negatif">en rouge</b>, le budget du mois est dépassé : chaque dépense en plus creuse l’écart.'],
   ['⭕', 'Les anneaux', 'Un anneau par poste. Le <b>trait noir</b> montre où on devrait en être aujourd’hui : si l’anneau le dépasse, on va trop vite. Dessous : ce qu’il reste, et combien on peut dépenser par jour.'],
   ['📉', 'Le solde à venir', 'Les cartes sont débitées une fois par mois, vers le 4. La courbe « Prévision du solde » montre le solde prévu et le <b>point bas</b> : c’est là que le compte risque le découvert. Les flèches ‹ › en haut avancent semaine par semaine.'],
-  ['🏷️', 'Classer une opération', 'Onglet <b>Opérations</b>, puis « À classer ». Touche une opération et choisis sa catégorie. Coche « Faire de même… » pour que l’app s’en souvienne pour la suite. Tu peux aussi ajouter un commentaire.'],
-  ['✅', 'C’est tout !', 'Les budgets, les projets et les réglages sont gérés par l’administrateur. Pour revoir ce guide : le bouton <b>?</b> en haut de l’écran.'],
+  ['🧳', 'Les projets', 'Les grosses dépenses prévues (vacances, cadeaux de Noël, impôts…) ont leur propre budget, financé par le <b>livret projets</b> : elles ne comptent pas dans le quotidien. Sur l’accueil, la ligne « Livret projets » est <b>verte</b> si tout est financé, <b class="negatif">rouge</b> s’il manquera de l’argent, et quand. L’onglet <b>Projets</b> montre le plan mois par mois.'],
+  ['🏷️', 'Classer une opération', 'Onglet <b>Opérations</b>, puis « À classer ». Touche une opération et choisis sa catégorie, ou le projet auquel elle appartient (une dépense du voyage en Italie, par exemple). Coche « Faire de même… » pour que l’app s’en souvienne.'],
+  ['✅', 'C’est tout !', 'Les montants des budgets et des projets, ainsi que les réglages, sont gérés par l’administrateur. Pour revoir ce guide : le bouton <b>?</b> en haut de l’écran.'],
 ];
 let etapeGuide = 0;
 function ouvrirGuide() {

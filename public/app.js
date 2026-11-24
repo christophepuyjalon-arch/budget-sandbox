@@ -339,10 +339,10 @@ function dessinerAccueil(d, k) {
   const projets = d.projets.filter((p) => !p.archive && p.fin >= decalerMois(d.mois, -1));
   $('section-projets').hidden = !projets.length && !d.livret;
   const plan = planProjets(d);
-  $('resume-livret').innerHTML = `<span class="livret-haut"><span>Livret projets</span><b>${d.livret?.solde != null ? fmt(d.livret.solde) : '?'}</b></span>
-    <span class="livret-detail">${resumePlan(plan)}</span><small>Voir le plan mois par mois ›</small>`;
-  $('projets').innerHTML = projets.map((p) => barre(p.nom, p.depense, p.budget,
-    `${periode(p)} · ${p.depense > p.budget ? `dépassé de ${fmt(p.depense - p.budget)}` : `reste ${fmt(p.budget - p.depense)}`}`)).join('');
+  // Une seule ligne sur l'accueil : le détail est dans l'onglet Projets. Rouge si le plan coince.
+  $('resume-livret').classList.toggle('alerte-projets', !!plan.premierNegatif);
+  $('resume-livret').innerHTML = `<span>Livret projets${d.livret?.solde != null ? ` : <b>${fmt(d.livret.solde)}</b>` : ''}</span>
+    <span>${resumePlan(plan)} ›</span>`;
 
   const suivi = k.cats.filter((c) => c.type === 'suivi' && c.depense);
   if (k.depenseAClasser > 0) suivi.unshift({ id: '__aclasser', nom: 'À classer (compté dans le reste)', depense: k.depenseAClasser });

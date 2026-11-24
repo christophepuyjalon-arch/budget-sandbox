@@ -343,3 +343,9 @@ body.projection #section-projets, body.projection #section-suivi, body.projectio
 /* Grand chiffre : lignes d'information sous le reste du quotidien */
 .par-jour span { display: block; }
 .par-jour span + span { margin-top: 2px; }
+
+/* Accueil : une ligne de résumé des projets */
+.resume-projets { display: grid; gap: 2px; width: 100%; text-align: left; margin-top: 18px; padding: 10px 12px; border-radius: 10px;
+  background: var(--surface); border: 0; border-left: 3px solid var(--positif); font-size: 15px; }
+.resume-projets b { font-variant-numeric: tabular-nums; }
+.resume-projets.alerte-projets { border-left-color: var(--alerte); }

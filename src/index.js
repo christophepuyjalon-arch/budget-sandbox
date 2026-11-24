@@ -179,6 +179,13 @@ async function router(req, env) {
   }
 
   // Prévision : opérations récurrentes ignorées et opérations prévues ajoutées à la main. Toute la famille.
+  // Solde du livret projets, saisi à la main (les livrets ne sont pas transmis par la banque).
+  if (p === '/api/livret' && req.method === 'PUT') {
+    const { solde } = await req.json();
+    if (!Number.isFinite(Number(solde))) return repondre({ erreur: 'Montant invalide.' }, 400);
+    await ecrireReglage(env, 'livret', { solde: Math.round(Number(solde)), date: maintenant().slice(0, 10) }).run();
+    return repondre({ ok: true });
+  }
   if (p === '/api/prevision' && req.method === 'PUT') {
     const c = await req.json();
     const ignores = [...new Set((c.ignores || []).map((x) => String(x).slice(0, 80)))].slice(0, 200);
@@ -414,7 +421,7 @@ export async function synchroniser(env, psu, seulementConnexion = null) {
 async function etat(env, mois) {
   if (!/^\d{4}-\d{2}$/.test(mois || '')) mois = maintenant().slice(0, 7);
   const [debut, fin] = [`${mois}-01`, `${mois}-31`];
-  const [comptes, connexions, operations, bornes, synchro, categories, regles, projets, encours, cartes, nomsCartes, prevision] = await env.DB.batch([
+  const [comptes, connexions, operations, bornes, synchro, categories, regles, projets, encours, cartes, nomsCartes, prevision, livret] = await env.DB.batch([
     env.DB.prepare(`SELECT c.id, c.nom, c.iban, c.devise, c.solde, c.solde_type, c.solde_date, c.synchro, c.masque, c.connexion, c.type, c.jour_debit, x.banque
       FROM comptes c JOIN connexions x ON x.id = c.connexion ORDER BY x.banque, c.nom`),
     env.DB.prepare('SELECT id, banque, pays, expire, cree, statut, erreur FROM connexions ORDER BY cree'),
@@ -438,6 +445,7 @@ async function etat(env, mois) {
     env.DB.prepare(`SELECT DISTINCT o.carte FROM operations o JOIN comptes c ON c.id = o.compte WHERE o.carte IS NOT NULL AND c.masque = 0`),
     env.DB.prepare("SELECT valeur FROM reglages WHERE cle = 'cartes'"),
     env.DB.prepare("SELECT valeur FROM reglages WHERE cle = 'prevision'"),
+    env.DB.prepare("SELECT valeur FROM reglages WHERE cle = 'livret'"),
   ]);
   return {
     mois,
@@ -453,5 +461,6 @@ async function etat(env, mois) {
     cartes: cartes.results.map((c) => c.carte).sort(),
     nomsCartes: nomsCartes.results[0] ? JSON.parse(nomsCartes.results[0].valeur) : {},
     prevision: prevision.results[0] ? JSON.parse(prevision.results[0].valeur) : { ignores: [], ajouts: [] },
+    livret: livret.results[0] ? JSON.parse(livret.results[0].valeur) : null,
   };
 }

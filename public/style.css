@@ -304,3 +304,11 @@ body.projection #section-projets, body.projection #section-suivi, body.projectio
 .puces-filtre button.alerte-puce:not(.actif) { border-color: var(--attention); color: var(--attention); border-style: dashed; }
 .filtre-actif { gap: 10px; }
 .filtre-actif b { font-variant-numeric: tabular-nums; }
+
+/* Livret projets */
+.livret { display: grid; gap: 2px; width: 100%; text-align: left; background: var(--surface); border: 0; border-radius: 10px; padding: 10px 12px; margin-bottom: 6px; }
+.livret-haut { display: flex; justify-content: space-between; align-items: baseline; font-family: var(--titre); font-weight: 600; font-size: 18px; }
+.livret-haut b { font-size: 24px; font-variant-numeric: tabular-nums; }
+.livret-detail { font-size: 15px; }
+.livret-detail b { font-weight: 500; font-variant-numeric: tabular-nums; }
+.livret small { color: var(--encre-2); font-size: 13px; }

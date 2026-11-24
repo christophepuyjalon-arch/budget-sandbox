@@ -332,8 +332,20 @@ function dessinerAccueil(d, k) {
   $('fixes').innerHTML = k.cats.filter((c) => c.type === 'fixe').map((c) => barre(c.nom, c.depense, c.budget,
     c.depense >= c.budget * 0.98 ? 'Passé ✓' : `Reste ${fmt(c.budget - c.depense)}`, c.id)).join('');
 
-  const projets = d.projets.filter((p) => !p.archive && p.debut <= d.mois && p.fin >= decalerMois(d.mois, -1));
-  $('section-projets').hidden = !projets.length;
+  // Projets en cours et à venir (non archivés), face au solde du livret projets.
+  const projets = d.projets.filter((p) => !p.archive && p.fin >= decalerMois(d.mois, -1));
+  $('section-projets').hidden = !projets.length && !d.livret;
+  const resteProjets = projets.reduce((t, p) => t + Math.max(p.budget - p.depense, 0), 0);
+  if (d.livret) {
+    const marge = d.livret.solde - resteProjets;
+    $('livret').innerHTML = `<span class="livret-haut"><span>Livret projets</span><b>${fmt(d.livret.solde)}</b></span>
+      <span class="livret-detail">Reste à dépenser sur les projets : ${fmt(resteProjets)} ·
+      <b class="${marge < 0 ? 'negatif' : 'positif'}">${marge < 0 ? `il manque ${fmt(-marge)}` : `marge ${fmt(marge)}`}</b></span>
+      <small>Solde saisi le ${new Date(`${d.livret.date}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} · toucher pour le mettre à jour</small>`;
+  } else {
+    $('livret').innerHTML = `<span class="livret-haut"><span>Livret projets</span><b>?</b></span>
+      <span class="livret-detail">Reste à dépenser sur les projets : ${fmt(resteProjets)}</span><small>Touche ici pour saisir le solde de ton livret projets.</small>`;
+  }
   $('projets').innerHTML = projets.map((p) => barre(p.nom, p.depense, p.budget,
     `${periode(p)} · ${p.depense > p.budget ? `dépassé de ${fmt(p.depense - p.budget)}` : `reste ${fmt(p.budget - p.depense)}`}`)).join('');
 
@@ -1649,6 +1661,16 @@ const pluginMarque = {
   },
 };
 (function enregistrerPlugin() { if (typeof Chart === 'undefined') { setTimeout(enregistrerPlugin, 200); return; } Chart.register(pluginMarque); })();
+
+$('livret').addEventListener('click', async () => {
+  const actuel = donnees?.livret ? (donnees.livret.solde / 100).toFixed(2).replace('.', ',') : '';
+  const saisie = prompt('Solde actuel du livret projets (€) :', actuel);
+  if (saisie === null || !saisie.trim()) return;
+  const centimes = Math.round(Number(saisie.replace(/\s/g, '').replace(',', '.')) * 100);
+  if (!Number.isFinite(centimes)) { alert('Montant invalide.'); return; }
+  try { await api('/api/livret', { method: 'PUT', body: JSON.stringify({ solde: centimes }) }); await charger({ garderHistorique: true }); }
+  catch (e) { alert(e.message); }
+});
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 demarrer();

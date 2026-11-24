@@ -285,29 +285,29 @@ function dessiner() {
 
 // ---------- Aujourd'hui ----------
 function dessinerAccueil(d, k) {
+  // Le grand chiffre = ce qui reste pour le quotidien (les enveloppes), le seul poste
+  // sur lequel on agit au jour le jour. Les charges fixes et le total passent en dessous.
   const reste = k.totalBudget - k.totalDepense;
-  $('reste-titre').textContent = k.titre || (k.passe ? 'Bilan du mois' : 'Reste à dépenser');
-  $('reste').textContent = fmt(k.passe ? k.totalBudget - k.totalDepense : reste);
-  $('reste').classList.toggle('negatif', reste < 0);
-  $('reste-detail').textContent = `${fmt(k.totalDepense)} dépensés sur ${fmt(k.totalBudget)}${k.enCours ? ` · jour ${k.jour}/${k.nbJours}` : ''}`;
-  // Pilotage : du reste, on met de côté les charges fixes encore à passer ;
-  // ce qui reste est vraiment libre pour le quotidien.
-  const fixesAVenir = k.cats.filter((c) => c.type === 'fixe').reduce((t, c) => t + Math.max(c.budget - c.depense, 0), 0);
-  const libre = reste - fixesAVenir;
+  const fixes = k.cats.filter((c) => c.type === 'fixe');
+  const fixesBudget = fixes.reduce((t, c) => t + c.budget, 0);
+  const fixesPasses = fixes.reduce((t, c) => t + Math.max(c.depense, 0), 0);
+  const fixesAVenir = fixes.reduce((t, c) => t + Math.max(c.budget - c.depense, 0), 0);
+  const libre = reste - fixesAVenir;   // les « à classer » en sont déjà déduits
   const noms = k.cats.filter((c) => c.type === 'enveloppe').map((c) => c.nom.toLowerCase());
   const liste = noms.length > 1 ? `${noms.slice(0, -1).join(', ')}, ${noms[noms.length - 1]}` : noms[0] || '';
-  let texte = '';
-  if (k.passe) texte = reste >= 0 ? 'Budget tenu ✓' : 'Budget dépassé.';
-  else if (k.enCours) {
-    const quotidien = `${fmt(libre)} pour le quotidien${liste ? ` (${liste})` : ''}`;
-    const parJour = !k.titre && k.joursRestants > 1 && libre > 0 ? `, soit ${fmt(libre / k.joursRestants)} par jour` : '';
-    texte = fixesAVenir
-      ? `Charges fixes encore à passer : ${fmt(fixesAVenir)}. Reste ${quotidien}${parJour}.`
-      : `Tout est libre pour le quotidien${parJour}.`;
-    if (k.titre) texte += ' Projection au rythme habituel.';
-  }
-  $('par-jour').textContent = texte;
-  $('par-jour').classList.toggle('negatif', libre < 0 && k.enCours);
+  const depasse = libre < 0;
+  const quand = k.titre ? ` prévu le ${k.titre.replace(/^Reste prévu le /, '')}` : '';
+  $('reste-titre').textContent = depasse ? `Quotidien${quand} : dépassé de` : k.passe ? 'Quotidien : reste du mois' : `Reste pour le quotidien${quand}`;
+  $('reste').textContent = fmt(Math.abs(libre));
+  $('reste').classList.toggle('negatif', depasse);
+  const aClasser = Math.max(k.depenseAClasser || 0, 0);
+  $('reste-detail').textContent = [liste, aClasser ? `dont ${fmt(aClasser)} à classer` : ''].filter(Boolean).join(' · ');
+  const lignes = [];
+  if (depasse && k.enCours && !k.titre) lignes.push('Chaque dépense d’ici la fin du mois creuse le dépassement.');
+  if (fixesBudget) lignes.push(`Charges fixes : ${fmt(fixesPasses)} passées sur ${fmt(fixesBudget)}${fixesAVenir ? ` · ${fmt(fixesAVenir)} encore à venir` : ' ✓'}`);
+  lignes.push(`Budget du mois : ${fmt(k.totalDepense)} dépensés sur ${fmt(k.totalBudget)}${k.enCours && !k.titre ? ` · jour ${k.jour}/${k.nbJours}` : ''}${k.titre ? ' · projection au rythme habituel' : ''}`);
+  $('par-jour').innerHTML = lignes.map((l) => `<span>${echapper(l)}</span>`).join('');
+  $('par-jour').classList.remove('negatif');
 
   $('lien-a-classer').hidden = !k.aClasser;
   $('lien-a-classer').textContent = `${k.aClasser} opération${k.aClasser > 1 ? 's' : ''} à classer ›`;
@@ -318,10 +318,12 @@ function dessinerAccueil(d, k) {
     const attendu = Math.round(c.budget * k.fraction);
     const ecart = attendu - c.depense;
     const etat = c.depense > c.budget ? 'depasse' : c.depense > attendu ? 'avance' : 'ok';
+    // Un seul message, le plus utile au moment d'acheter : ce qui reste, et par jour.
+    const resteC = c.budget - c.depense;
     const message = c.budget === 0 ? 'Sans budget'
-      : etat === 'depasse' ? `Dépassé de ${fmt(c.depense - c.budget)}`
-      : !k.enCours ? `Reste ${fmt(c.budget - c.depense)}`
-      : ecart >= 0 ? `Marge ${fmt(ecart)}` : `En avance de ${fmt(-ecart)}`;
+      : etat === 'depasse' ? `Dépassé de ${fmt(-resteC)}`
+      : k.enCours && !k.titre && k.joursRestants > 1 ? `Reste ${fmt(resteC)} · ${fmt(resteC / k.joursRestants)}/jour`
+      : `Reste ${fmt(resteC)}`;
     return `<button class="anneau ${etat}" data-cat="${echapper(c.id)}">
       ${svgAnneau(c.budget ? c.depense / c.budget : 0, k.enCours ? k.fraction : null)}
       <span class="anneau-pct">${c.budget ? Math.round((c.depense / c.budget) * 100) : 0} %</span>

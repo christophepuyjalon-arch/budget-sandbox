@@ -339,3 +339,7 @@ body.projection #section-projets, body.projection #section-suivi, body.projectio
 .ligne-echeance { display: grid; grid-template-columns: 1.2fr .8fr 1.3fr auto; gap: 6px; margin-top: 6px; }
 .ligne-echeance input { min-height: 44px; padding: 6px 8px; font-size: 15px; min-width: 0; }
 .ligne-echeance .action { background: none; border: 0; font-size: 20px; color: var(--alerte); padding: 0 6px; }
+
+/* Grand chiffre : lignes d'information sous le reste du quotidien */
+.par-jour span { display: block; }
+.par-jour span + span { margin-top: 2px; }

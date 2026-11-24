@@ -701,6 +701,36 @@ $('liste-regles').addEventListener('click', async (e) => {
 function dessinerCategories(d) {
   delete $('liste-categories').dataset.modifie;
   $('liste-categories').innerHTML = d.categories.map((c) => ligneCategorie(c)).join('');
+  majTotalBudget();
+}
+// Total du budget mensuel pendant la saisie, comparé aux revenus moyens des 3 derniers mois complets.
+let revenusMoyens = null;
+function majTotalBudget() {
+  const lignes = [...document.querySelectorAll('.ligne-categorie')].map((l) => ({
+    type: l.querySelector('.cat-type').value, budget: enCentimesSaisis(l.querySelector('.cat-budget').value),
+  }));
+  const somme = (t) => lignes.filter((l) => l.type === t).reduce((s, l) => s + l.budget, 0);
+  const fixes = somme('fixe'), courantes = somme('enveloppe'), total = fixes + courantes;
+  let html = `<div class="total-ligne"><span>Total du budget mensuel</span><b>${fmt(total)}</b></div>
+    <small>charges fixes ${fmt(fixes)} + dépenses courantes ${fmt(courantes)}</small>`;
+  if (revenusMoyens) {
+    const reste = revenusMoyens - total;
+    html += `<div class="total-ligne"><span>Revenus moyens (3 derniers mois)</span><b>${fmt(revenusMoyens)}</b></div>
+      <div class="total-ligne"><span>Reste pour les projets et l’épargne</span><b class="${reste < 0 ? 'negatif' : 'positif'}">${fmtSigne(reste)}</b></div>
+      <small>soit ${fmtSigne(reste * 12)} par an, à comparer aux budgets de vos projets</small>`;
+  }
+  $('total-budget').innerHTML = html;
+  if (revenusMoyens === null) {
+    revenusMoyens = 0;
+    chargerHistorique().then(() => {
+      const m0 = moisCourant();
+      const prec = [1, 2, 3].map((n) => decalerMois(m0, -n));
+      const ops = opsHistorique().filter((o) => o.cat === 'revenus' && !o.projet && !o.epargne && prec.includes(o.date.slice(0, 7)));
+      const mois = prec.filter((m) => ops.some((o) => o.date.startsWith(m)));
+      revenusMoyens = mois.length ? Math.round(ops.reduce((t, o) => t + o.montant, 0) / mois.length) : 0;
+      if (revenusMoyens) majTotalBudget();
+    }).catch(() => {});
+  }
 }
 function ligneCategorie(c) {
   return `<div class="ligne-categorie" data-id="${echapper(c.id || '')}">
@@ -711,13 +741,15 @@ function ligneCategorie(c) {
     </div>
     <button type="button" class="action danger cat-suppr">Supprimer</button></div>`;
 }
-$('liste-categories').addEventListener('input', () => { $('liste-categories').dataset.modifie = '1'; });
+$('liste-categories').addEventListener('input', () => { $('liste-categories').dataset.modifie = '1'; majTotalBudget(); });
+$('liste-categories').addEventListener('change', majTotalBudget);
 $('liste-categories').addEventListener('click', (e) => {
   if (!e.target.classList.contains('cat-suppr')) return;
   const ligne = e.target.closest('.ligne-categorie');
   if (!confirm(`Supprimer « ${ligne.querySelector('.cat-nom').value} » ? Ses opérations repasseront « à classer ».`)) return;
   ligne.remove();
   $('liste-categories').dataset.modifie = '1';
+  majTotalBudget();
 });
 $('btn-ajout-categorie').addEventListener('click', () => {
   $('liste-categories').insertAdjacentHTML('beforeend', ligneCategorie({ nom: '', type: 'enveloppe', budget: 0 }));

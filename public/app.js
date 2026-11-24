@@ -250,6 +250,8 @@ function afficherApp() {
   const cache = lire(`etat:${mois}`);
   if (cache?.categories) { donnees = cache; dessiner(); }
   charger();
+  // Guide rapide : ouvert tout seul la première fois sur les téléphones invités.
+  if (moi && !moi.admin && !lire('guide-vu')) setTimeout(() => ouvrirGuide(), 600);
 }
 
 async function charger({ garderHistorique = false } = {}) {
@@ -1590,6 +1592,7 @@ function majCurseur() {
   const max = Math.floor((Date.parse(prevision.horizon) - Date.parse(auj)) / (7 * 86400000));
   semaines = Math.min(semaines, max);
   $('cur-prec').disabled = semaines <= 0;
+  $('cur-auj').hidden = semaines <= 0;
   $('cur-suiv').disabled = semaines >= max;
   const D = plusJours(auj, 7 * semaines);
   document.body.classList.toggle('projection', semaines > 0);
@@ -1867,6 +1870,40 @@ $('btn-supprimer-projet').addEventListener('click', async () => {
   await charger();
   dessinerPageProjets();
 });
+
+// ---------- retour à aujourd'hui (curseur) ----------
+$('cur-auj').addEventListener('click', () => { semaines = 0; majCurseur(); });
+
+// ---------- guide rapide (l'essentiel pour suivre le budget, sans les réglages) ----------
+const GUIDE = [
+  ['👋', 'Bienvenue dans Budget', 'Les opérations du compte joint et des deux cartes arrivent toutes seules, deux fois par jour. Il n’y a rien à saisir. Ce guide te montre où regarder.'],
+  ['🎯', 'Le chiffre du haut', 'C’est ce qu’il reste ce mois-ci pour le quotidien : courses, shopping, transports. Quand il passe <b class="negatif">en rouge</b>, le budget du mois est dépassé : chaque dépense en plus creuse l’écart.'],
+  ['⭕', 'Les anneaux', 'Un anneau par poste. Le <b>trait noir</b> montre où on devrait en être aujourd’hui : si l’anneau le dépasse, on va trop vite. Dessous : ce qu’il reste, et combien on peut dépenser par jour.'],
+  ['📉', 'Le solde à venir', 'Les cartes sont débitées une fois par mois, vers le 4. La courbe « Prévision du solde » montre le solde prévu et le <b>point bas</b> : c’est là que le compte risque le découvert. Les flèches ‹ › en haut avancent semaine par semaine.'],
+  ['🏷️', 'Classer une opération', 'Onglet <b>Opérations</b>, puis « À classer ». Touche une opération et choisis sa catégorie. Coche « Faire de même… » pour que l’app s’en souvienne pour la suite. Tu peux aussi ajouter un commentaire.'],
+  ['✅', 'C’est tout !', 'Les budgets, les projets et les réglages sont gérés par l’administrateur. Pour revoir ce guide : le bouton <b>?</b> en haut de l’écran.'],
+];
+let etapeGuide = 0;
+function ouvrirGuide() {
+  etapeGuide = 0;
+  afficherEtapeGuide();
+  if (!$('dlg-guide').open) $('dlg-guide').showModal();
+}
+function afficherEtapeGuide() {
+  const [icone, titre, texte] = GUIDE[etapeGuide];
+  $('guide-etapes').innerHTML = `<div class="guide-icone" aria-hidden="true">${icone}</div><h2>${titre}</h2><p>${texte}</p>`;
+  $('guide-points').innerHTML = GUIDE.map((_, i) => `<i class="${i === etapeGuide ? 'actif' : ''}"></i>`).join('');
+  $('guide-prec').style.visibility = etapeGuide ? 'visible' : 'hidden';
+  $('guide-suiv').textContent = etapeGuide === GUIDE.length - 1 ? 'Compris' : 'Suivant';
+}
+$('guide-prec').addEventListener('click', () => { etapeGuide = Math.max(0, etapeGuide - 1); afficherEtapeGuide(); });
+$('guide-suiv').addEventListener('click', () => {
+  if (etapeGuide < GUIDE.length - 1) { etapeGuide++; afficherEtapeGuide(); return; }
+  $('dlg-guide').close();
+});
+$('dlg-guide').addEventListener('close', () => ecrire('guide-vu', true));
+$('btn-guide').addEventListener('click', ouvrirGuide);
+$('btn-guide-reglages').addEventListener('click', ouvrirGuide);
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 demarrer();

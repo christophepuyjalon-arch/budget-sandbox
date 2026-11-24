@@ -357,3 +357,18 @@ body.projection #section-projets, body.projection #section-suivi, body.projectio
 .total-ligne:first-child b { font-family: var(--titre); font-size: 24px; }
 .total-budget small { color: var(--encre-2); font-size: 13px; }
 .total-budget small + .total-ligne { margin-top: 8px; }
+
+/* Retour à aujourd'hui (curseur) */
+.cur-auj { border: 1px solid var(--filet); background: var(--surface); border-radius: 999px; padding: 4px 12px; font-size: 14px; min-height: 36px; margin-left: 4px; }
+.curseur #cur-nom { min-width: 150px; }
+
+/* Bouton d'aide et guide rapide */
+.boutons-entete { display: flex; align-items: center; gap: 2px; }
+.discret.aide { font-family: var(--titre); font-weight: 600; font-size: 20px; width: 40px; height: 40px; padding: 0; margin-right: 0; border: 1.5px solid var(--filet); }
+.guide { text-align: center; }
+.guide-icone { font-size: 44px; line-height: 1; margin: 6px 0 8px; }
+.guide h2 { font-size: 24px; }
+.guide p { font-size: 17px; line-height: 1.5; margin: 10px 0 4px; min-height: 7.5em; }
+.guide-points { display: flex; justify-content: center; gap: 6px; margin: 8px 0 0; }
+.guide-points i { width: 8px; height: 8px; border-radius: 50%; background: var(--filet); }
+.guide-points i.actif { background: var(--accent); }

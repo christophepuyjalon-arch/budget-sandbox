@@ -66,9 +66,12 @@
 <div id="page-accueil" class="page">
   <header class="entete">
     <h1>Budget</h1>
+    <span class="boutons-entete">
+    <button id="btn-guide" class="discret aide" aria-label="Guide rapide">?</button>
     <button id="btn-sync" class="discret" aria-label="Synchroniser">
       <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.9-3.9M4 5v4h4M4 13a8 8 0 0 0 14.9 3.9M20 19v-4h-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
+    </span>
   </header>
   <p id="statut" class="statut" aria-live="polite"></p>
   <div id="alertes"></div>
@@ -83,6 +86,7 @@
     <button id="cur-prec" class="fleche" aria-label="Semaine précédente">‹</button>
     <span id="cur-nom" aria-live="polite">Aujourd’hui</span>
     <button id="cur-suiv" class="fleche" aria-label="Semaine suivante">›</button>
+    <button id="cur-auj" class="cur-auj" hidden>Aujourd’hui</button>
   </div>
   <p id="cur-info" class="cur-info" hidden></p>
 
@@ -323,6 +327,7 @@
   <section class="bloc">
     <h2>Ce téléphone</h2>
     <p id="moi-nom" class="discret-texte"></p>
+    <button id="btn-guide-reglages" class="secondaire">Revoir le guide rapide</button>
     <button id="btn-deconnexion" class="secondaire">Désactiver ce téléphone</button>
   </section>
 </div>
@@ -439,6 +444,16 @@
     <p class="discret-texte">« Envoyer » ouvre le partage du téléphone : choisis l’app Claude. Sinon, copie le texte et colle-le dans une nouvelle conversation sur claude.ai, avec ton compte personnel.</p>
     <button value="fermer" class="secondaire">Fermer</button>
   </form>
+</dialog>
+
+<!-- ===== Guide rapide ===== -->
+<dialog id="dlg-guide" class="fiche guide">
+  <div id="guide-etapes"></div>
+  <div class="guide-points" id="guide-points" aria-hidden="true"></div>
+  <div class="deux boutons">
+    <button type="button" id="guide-prec" class="secondaire">Précédent</button>
+    <button type="button" id="guide-suiv" class="principal">Suivant</button>
+  </div>
 </dialog>
 
 <nav class="onglets" aria-label="Navigation">

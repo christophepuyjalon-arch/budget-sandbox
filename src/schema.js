@@ -71,6 +71,10 @@ const EVOLUTIONS = [
   [7, (db) => [
     db.prepare('ALTER TABLE regles ADD COLUMN montant INTEGER'),
   ]],
+  // 8 : échéancier des projets (sorties prévues par mois).
+  [8, (db) => [
+    db.prepare('ALTER TABLE projets ADD COLUMN echeancier TEXT'),
+  ]],
 ];
 
 let pret = null;

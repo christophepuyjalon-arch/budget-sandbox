@@ -124,7 +124,7 @@
 
   <section aria-label="Projets" id="section-projets">
     <h3 class="titre-section">Projets</h3>
-    <button id="livret" class="livret"></button>
+    <button id="resume-livret" class="livret"></button>
     <ul id="projets" class="barres"></ul>
   </section>
 
@@ -175,6 +175,54 @@
   </div>
 </div>
 
+<!-- ===== Projets ===== -->
+<div id="page-projets" class="page" hidden>
+  <header class="entete"><h1>Projets</h1></header>
+  <button id="livret" class="livret"></button>
+
+  <section aria-label="Plan mois par mois">
+    <h3 class="titre-section">Plan mois par mois</h3>
+    <p id="plan-resume" class="plan-resume"></p>
+    <div id="plan" class="plan"></div>
+  </section>
+
+  <section aria-label="Rentrées prévues">
+    <h3 class="titre-section">Rentrées prévues sur le livret</h3>
+    <p class="discret-texte">Seulement des rentrées sûres (13e mois, prime…). Une fois le versement fait, mets à jour le solde du livret et supprime la ligne.</p>
+    <ul id="rentrees" class="lignes"></ul>
+    <button id="btn-ajout-rentree" class="secondaire">Ajouter une rentrée prévue</button>
+  </section>
+
+  <section aria-label="Liste des projets">
+    <h3 class="titre-section">Projets</h3>
+    <ul id="liste-projets" class="barres liste-projets"></ul>
+    <form id="form-projet" class="form-projet bloc" hidden>
+      <input type="hidden" id="projet-id">
+      <label for="projet-nom">Nom</label><input id="projet-nom" required maxlength="60">
+      <label for="projet-budget">Budget (€)</label><input id="projet-budget" type="number" inputmode="decimal" min="0" step="1" required>
+      <div class="deux">
+        <div><label for="projet-debut">Début</label><input id="projet-debut" type="month" required></div>
+        <div><label for="projet-fin">Fin</label><input id="projet-fin" type="month" required></div>
+      </div>
+      <h4 class="sous-titre">Échéancier <small>(facultatif)</small></h4>
+      <p class="discret-texte">Quand l’argent sort vraiment : par exemple les réservations en mai, le reste en août. Sans échéancier, le budget est réparti à parts égales sur les mois du projet.</p>
+      <div id="echeancier"></div>
+      <button type="button" id="btn-ajout-echeance" class="secondaire">Ajouter une échéance</button>
+      <p id="echeancier-resume" class="discret-texte"></p>
+      <label for="projet-motif">Motif automatique <small>(facultatif)</small></label><input id="projet-motif" maxlength="60" placeholder="ex. DGFIP">
+      <p class="discret-texte">Les opérations de la période qui contiennent ce motif sont rattachées toutes seules au projet.</p>
+      <label class="case"><input type="checkbox" id="projet-archive"> Projet terminé (archivé)</label>
+      <div class="deux boutons">
+        <button type="button" id="btn-annuler-projet" class="secondaire">Annuler</button>
+        <button type="submit" class="principal">Enregistrer</button>
+      </div>
+      <button type="button" id="btn-supprimer-projet" class="secondaire danger">Supprimer le projet</button>
+    </form>
+    <button id="btn-nouveau-projet" class="principal">Nouveau projet</button>
+    <p class="discret-texte">Les dépenses rattachées à un projet (depuis la fiche de l’opération) ne comptent pas dans les budgets du mois : elles sont financées par le livret projets.</p>
+  </section>
+</div>
+
 <!-- ===== Graphiques ===== -->
 <div id="page-graphiques" class="page" hidden>
   <header class="entete"><h1>Graphiques</h1></header>
@@ -219,26 +267,6 @@
     <div id="liste-categories"></div>
     <button id="btn-ajout-categorie" class="secondaire">Ajouter une catégorie</button>
     <button id="btn-enregistrer-categories" class="principal">Enregistrer les budgets</button>
-  </section>
-
-  <section class="bloc" id="bloc-projets" hidden>
-    <h2>Projets</h2>
-    <p class="discret-texte">Un budget pour une période (voyage, impôts, cadeaux…). Les dépenses rattachées à un projet ne comptent pas dans les budgets du mois. Avec un motif (ex. DGFIP), les opérations de la période sont rattachées automatiquement.</p>
-    <ul id="liste-projets" class="liste"></ul>
-    <form id="form-projet" class="form-projet" hidden>
-      <input type="hidden" id="projet-id">
-      <label for="projet-nom">Nom</label><input id="projet-nom" required maxlength="60">
-      <label for="projet-budget">Budget (€)</label><input id="projet-budget" type="number" inputmode="decimal" min="0" step="1" required>
-      <div class="deux">
-        <div><label for="projet-debut">Début</label><input id="projet-debut" type="month" required></div>
-        <div><label for="projet-fin">Fin</label><input id="projet-fin" type="month" required></div>
-      </div>
-      <label for="projet-motif">Motif automatique <small>(facultatif)</small></label><input id="projet-motif" maxlength="60" placeholder="ex. DGFIP">
-      <label class="case"><input type="checkbox" id="projet-archive"> Projet terminé (archivé)</label>
-      <button type="submit" class="principal">Enregistrer le projet</button>
-      <button type="button" id="btn-supprimer-projet" class="secondaire danger">Supprimer le projet</button>
-    </form>
-    <button id="btn-nouveau-projet" class="secondaire">Nouveau projet</button>
   </section>
 
   <section class="bloc" id="bloc-comptes" hidden>
@@ -353,6 +381,22 @@
   </form>
 </dialog>
 
+<!-- ===== Rentrée prévue sur le livret ===== -->
+<dialog id="dlg-rentree" class="fiche">
+  <form method="dialog" id="form-rentree">
+    <h2>Rentrée prévue</h2>
+    <label for="rentree-libelle">Libellé</label><input id="rentree-libelle" maxlength="60" required placeholder="ex. 13e mois">
+    <div class="deux">
+      <div><label for="rentree-mois">Mois</label><input id="rentree-mois" type="month" required></div>
+      <div><label for="rentree-montant">Montant (€)</label><input id="rentree-montant" type="number" inputmode="decimal" min="0" step="1" required></div>
+    </div>
+    <div class="deux boutons">
+      <button value="annuler" class="secondaire" formnovalidate>Annuler</button>
+      <button value="ok" class="principal">Ajouter</button>
+    </div>
+  </form>
+</dialog>
+
 <!-- ===== Opération récurrente ===== -->
 <dialog id="dlg-recurrente" class="fiche">
   <form method="dialog" id="form-recurrente">
@@ -406,6 +450,10 @@
   <button data-page="operations">
     <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
     Opérations
+  </button>
+  <button data-page="projets">
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 8h16v11H4zM9 8V5h6v3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+    Projets
   </button>
   <button data-page="graphiques">
     <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M5 20V11M10 20V5M15 20v-7M20 20V9" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>

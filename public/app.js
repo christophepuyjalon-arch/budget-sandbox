@@ -246,7 +246,7 @@ function afficherApp() {
   $('installer').hidden = true;
   $('app').hidden = false;
   $('moi-nom').textContent = moi ? `Activé au nom de ${moi.nom}${moi.admin ? ' (administrateur)' : ''}.` : '';
-  for (const id of ['bloc-banque', 'bloc-famille', 'bloc-budgets', 'bloc-projets', 'bloc-comptes']) $(id).hidden = !moi?.admin;
+  for (const id of ['bloc-banque', 'bloc-famille', 'bloc-budgets', 'bloc-comptes']) $(id).hidden = !moi?.admin;
   const cache = lire(`etat:${mois}`);
   if (cache?.categories) { donnees = cache; dessiner(); }
   charger();
@@ -278,6 +278,7 @@ function dessiner() {
   dessinerAccueil(d, calcul);
   dessinerOperations(d, calcul);
   $('section-prevision').hidden = d.mois !== moisCourant() || !d.comptes.length;
+  if (!$('page-projets').hidden) dessinerPageProjets();
   if (d.mois === moisCourant()) dessinerPrevision();
   if (!$('page-reglages').hidden) dessinerReglages();
 }
@@ -335,17 +336,9 @@ function dessinerAccueil(d, k) {
   // Projets en cours et à venir (non archivés), face au solde du livret projets.
   const projets = d.projets.filter((p) => !p.archive && p.fin >= decalerMois(d.mois, -1));
   $('section-projets').hidden = !projets.length && !d.livret;
-  const resteProjets = projets.reduce((t, p) => t + Math.max(p.budget - p.depense, 0), 0);
-  if (d.livret) {
-    const marge = d.livret.solde - resteProjets;
-    $('livret').innerHTML = `<span class="livret-haut"><span>Livret projets</span><b>${fmt(d.livret.solde)}</b></span>
-      <span class="livret-detail">Reste à dépenser sur les projets : ${fmt(resteProjets)} ·
-      <b class="${marge < 0 ? 'negatif' : 'positif'}">${marge < 0 ? `il manque ${fmt(-marge)}` : `marge ${fmt(marge)}`}</b></span>
-      <small>Solde saisi le ${new Date(`${d.livret.date}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} · toucher pour le mettre à jour</small>`;
-  } else {
-    $('livret').innerHTML = `<span class="livret-haut"><span>Livret projets</span><b>?</b></span>
-      <span class="livret-detail">Reste à dépenser sur les projets : ${fmt(resteProjets)}</span><small>Touche ici pour saisir le solde de ton livret projets.</small>`;
-  }
+  const plan = planProjets(d);
+  $('resume-livret').innerHTML = `<span class="livret-haut"><span>Livret projets</span><b>${d.livret?.solde != null ? fmt(d.livret.solde) : '?'}</b></span>
+    <span class="livret-detail">${resumePlan(plan)}</span><small>Voir le plan mois par mois ›</small>`;
   $('projets').innerHTML = projets.map((p) => barre(p.nom, p.depense, p.budget,
     `${periode(p)} · ${p.depense > p.budget ? `dépassé de ${fmt(p.depense - p.budget)}` : `reste ${fmt(p.budget - p.depense)}`}`)).join('');
 
@@ -635,11 +628,12 @@ document.querySelectorAll('.onglets button').forEach((b) => b.addEventListener('
 }));
 function afficherPage(nom) {
   document.querySelectorAll('.onglets button').forEach((b) => b.classList.toggle('actif', b.dataset.page === nom));
-  for (const p of ['accueil', 'operations', 'graphiques', 'reglages']) $(`page-${p}`).hidden = nom !== p;
+  for (const p of ['accueil', 'operations', 'projets', 'graphiques', 'reglages']) $(`page-${p}`).hidden = nom !== p;
   scrollTo(0, 0);
   if (nom === 'operations' && donnees?.categories) dessinerOperations(donnees, calcul);
   if (nom === 'reglages') dessinerReglages();
   if (nom === 'graphiques') dessinerGraphiques();
+  if (nom === 'projets') dessinerPageProjets();
 }
 
 // ---------- réglages ----------
@@ -657,7 +651,6 @@ async function dessinerReglages() {
 
   if (!moi?.admin) return;
   if (!$('liste-categories').dataset.modifie) dessinerCategories(d);
-  dessinerProjets(d);
 
   // Comptes
   $('liste-comptes').innerHTML = d.comptes.map((c) => `<li class="compte-reglage" data-compte="${echapper(c.id)}"><div>
@@ -743,51 +736,6 @@ $('btn-enregistrer-categories').addEventListener('click', async () => {
     dessinerCategories(donnees);
     statut('Budgets enregistrés ✓');
   } catch (e) { alert(e.message); }
-});
-
-// Projets
-function dessinerProjets(d) {
-  $('liste-projets').innerHTML = d.projets.map((p) => `<li><div>${echapper(p.nom)}${p.archive ? ' <small class="inline">(archivé)</small>' : ''}
-    <small>${periode(p)} · ${fmt(p.depense)} / ${fmt(p.budget)} · ${p.nombre} opération(s)${p.motif ? ` · auto : ${echapper(p.motif)}` : ''}</small></div>
-    <button class="action" data-projet="${echapper(p.id)}">Modifier</button></li>`).join('') || '<li class="vide">Aucun projet.</li>';
-}
-function ouvrirProjet(p) {
-  $('form-projet').hidden = false;
-  $('btn-nouveau-projet').hidden = true;
-  $('projet-id').value = p?.id || '';
-  $('projet-nom').value = p?.nom || '';
-  $('projet-budget').value = p ? enEuros(p.budget) : '';
-  $('projet-debut').value = p?.debut || moisCourant();
-  $('projet-fin').value = p?.fin || moisCourant();
-  $('projet-motif').value = p?.motif || '';
-  $('projet-archive').checked = !!p?.archive;
-  $('btn-supprimer-projet').hidden = !p;
-  $('projet-nom').focus();
-}
-function fermerProjet() { $('form-projet').hidden = true; $('btn-nouveau-projet').hidden = false; }
-$('btn-nouveau-projet').addEventListener('click', () => ouvrirProjet(null));
-$('liste-projets').addEventListener('click', (e) => {
-  const b = e.target.closest('[data-projet]');
-  if (b) ouvrirProjet(donnees.projets.find((p) => p.id === b.dataset.projet));
-});
-$('form-projet').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const id = $('projet-id').value;
-  const corps = {
-    nom: $('projet-nom').value, budget: enCentimesSaisis($('projet-budget').value),
-    debut: $('projet-debut').value, fin: $('projet-fin').value, motif: $('projet-motif').value, archive: $('projet-archive').checked,
-  };
-  try {
-    await api(id ? `/api/projets/${encodeURIComponent(id)}` : '/api/projets', { method: id ? 'PUT' : 'POST', body: JSON.stringify(corps) });
-    fermerProjet();
-    await charger();
-  } catch (err) { alert(err.message); }
-});
-$('btn-supprimer-projet').addEventListener('click', async () => {
-  if (!confirm('Supprimer ce projet ? Ses opérations reviendront dans les budgets du mois.')) return;
-  await api(`/api/projets/${encodeURIComponent($('projet-id').value)}`, { method: 'DELETE' }).catch((e) => alert(e.message));
-  fermerProjet();
-  await charger();
 });
 
 // Comptes : enregistrement à chaque modification
@@ -1662,14 +1610,228 @@ const pluginMarque = {
 };
 (function enregistrerPlugin() { if (typeof Chart === 'undefined') { setTimeout(enregistrerPlugin, 200); return; } Chart.register(pluginMarque); })();
 
+
+// ---------- projets : livret, plan mois par mois, échéanciers ----------
+// Sorties prévues de chaque projet, mois par mois, à partir du mois en cours.
+// Avec un échéancier : on le suit ; ce qui est déjà dépensé est déduit des premières échéances
+// (ou le retard est reporté sur ce mois) et l'écart avec le budget va au dernier mois.
+// Sans échéancier : le reste est réparti à parts égales sur les mois restants.
+function sortiesProjet(p, m0) {
+  const reste = Math.max(p.budget - Math.max(p.depense, 0), 0);
+  if (!reste) return [];
+  // Sans échéancier : si le projet a déjà eu sa dépense ce mois-ci (ex. impôts mensuels),
+  // le reste commence le mois suivant.
+  const dejaCeMois = !p.echeancier?.length && p.fin > m0 && (donnees?.operations || []).some((o) => o.projet === p.id && o.date.startsWith(m0));
+  const premier = dejaCeMois ? decalerMois(m0, 1) : m0;
+  const debut = p.debut > premier ? p.debut : premier;
+  const fin = p.fin >= debut ? p.fin : debut;
+  if (!p.echeancier?.length) {
+    const mois = [];
+    for (let m = debut; m <= fin && mois.length < 36; m = decalerMois(m, 1)) mois.push(m);
+    const part = Math.floor(reste / mois.length);
+    return mois.map((m, i) => ({ mois: m, montant: i === mois.length - 1 ? reste - part * (mois.length - 1) : part, libelle: '' }));
+  }
+  const parMois = {};
+  let passe = 0;
+  for (const e of p.echeancier) {
+    if (e.mois < m0) passe += e.montant;
+    else (parMois[e.mois] ??= { mois: e.mois, montant: 0, libelle: e.libelle || '' }).montant += e.montant;
+  }
+  const futur = Object.values(parMois).sort((a, b) => a.mois.localeCompare(b.mois));
+  let avance = Math.max(p.depense, 0) - passe;   // > 0 : dépensé en avance sur le plan ; < 0 : en retard
+  if (avance < 0) {
+    if (futur[0]?.mois === m0) futur[0].montant -= avance;
+    else futur.unshift({ mois: m0, montant: -avance, libelle: 'en retard sur l’échéancier' });
+  } else {
+    for (const e of futur) { const x = Math.min(e.montant, avance); e.montant -= x; avance -= x; }
+  }
+  let ecart = reste - futur.reduce((t, e) => t + e.montant, 0);
+  if (ecart > 0) {
+    const dernier = futur.length ? futur[futur.length - 1].mois : fin;
+    const m = dernier > fin ? dernier : fin;
+    const e = futur.find((x) => x.mois === m);
+    if (e) e.montant += ecart; else futur.push({ mois: m, montant: ecart, libelle: 'non planifié' });
+  } else {
+    for (let i = futur.length - 1; i >= 0 && ecart < 0; i--) { const x = Math.min(futur[i].montant, -ecart); futur[i].montant -= x; ecart += x; }
+  }
+  return futur.filter((e) => e.montant > 0);
+}
+
+function planProjets(d) {
+  const m0 = moisCourant();
+  const actifs = d.projets.filter((p) => !p.archive && (p.fin >= m0 || p.budget > p.depense));
+  const parMois = {};
+  const mois = (m) => (parMois[m] ??= { mois: m, rentrees: [], sorties: [] });
+  for (const p of actifs) for (const e of sortiesProjet(p, m0)) mois(e.mois).sorties.push({ ...e, projet: p.nom });
+  const enRetard = [];
+  for (const r of d.livret?.rentrees || []) {
+    if (r.mois < m0) enRetard.push(r);
+    mois(r.mois < m0 ? m0 : r.mois).rentrees.push(r);
+  }
+  mois(m0);
+  const lignes = Object.values(parMois).sort((a, b) => a.mois.localeCompare(b.mois)).slice(0, 36);
+  let solde = d.livret?.solde ?? 0;
+  let premierNegatif = null, plusBas = null;
+  for (const l of lignes) {
+    l.entree = l.rentrees.reduce((t, r) => t + r.montant, 0);
+    l.sortie = l.sorties.reduce((t, s) => t + s.montant, 0);
+    solde += l.entree - l.sortie;
+    l.solde = solde;
+    if (solde < 0 && !premierNegatif) premierNegatif = l;
+    if (!plusBas || solde < plusBas.solde) plusBas = l;
+  }
+  const resteTotal = actifs.reduce((t, p) => t + Math.max(p.budget - p.depense, 0), 0);
+  const rentreesTotal = (d.livret?.rentrees || []).reduce((t, r) => t + r.montant, 0);
+  return { lignes, premierNegatif, plusBas, enRetard, resteTotal, rentreesTotal, connu: d.livret?.solde != null };
+}
+function resumePlan(plan) {
+  if (!plan.connu) return 'Saisis le solde du livret pour vérifier le financement des projets.';
+  if (!plan.premierNegatif) return `Projets financés ✓ (au plus bas : ${fmt(plan.plusBas.solde)} en ${nomMois(plan.plusBas.mois).split(' ')[0]})`;
+  const l = plan.premierNegatif;
+  const cause = [...l.sorties].sort((a, b) => b.montant - a.montant)[0]?.projet;
+  return `<b class="negatif">Il manquera ${fmt(-l.solde)} en ${nomMois(l.mois).split(' ')[0]}</b>${cause ? ` (${echapper(cause)})` : ''}`;
+}
+
+function dessinerPageProjets() {
+  const d = donnees;
+  if (!d?.projets) return;
+  const plan = planProjets(d);
+  // Livret
+  $('livret').innerHTML = d.livret?.solde != null
+    ? `<span class="livret-haut"><span>Livret projets</span><b>${fmt(d.livret.solde)}</b></span>
+      <span class="livret-detail">Reste à dépenser sur les projets : ${fmt(plan.resteTotal)}${plan.rentreesTotal ? ` · rentrées prévues : +${fmt(plan.rentreesTotal)}` : ''}</span>
+      <small>Solde saisi le ${new Date(`${d.livret.date}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} · toucher pour le mettre à jour</small>`
+    : `<span class="livret-haut"><span>Livret projets</span><b>?</b></span><small>Touche ici pour saisir le solde de ton livret projets.</small>`;
+  // Résumé et plan
+  $('plan-resume').innerHTML = resumePlan(plan) + (plan.enRetard.length ? `<br><small class="attention">${plan.enRetard.length} rentrée(s) prévue(s) d’un mois passé : versement faite ? Mets à jour le solde et supprime la ligne.</small>` : '');
+  $('plan').innerHTML = plan.lignes.map((l) => `<div class="plan-mois ${l.solde < 0 ? 'manque' : ''}">
+      <div class="plan-tete"><b>${nomMois(l.mois)}</b><span>livret fin de mois <b class="${l.solde < 0 ? 'negatif' : ''}">${fmt(l.solde)}</b></span></div>
+      <ul>${l.rentrees.map((r) => `<li class="plus"><span>${echapper(r.libelle)}</span><b>+${fmt(r.montant)}</b></li>`).join('')}
+      ${l.sorties.map((s) => `<li><span>${echapper(s.projet)}${s.libelle ? ` <small>${echapper(s.libelle)}</small>` : ''}</span><b>−${fmt(s.montant)}</b></li>`).join('')}
+      ${!l.rentrees.length && !l.sorties.length ? '<li class="vide">Rien de prévu</li>' : ''}</ul></div>`).join('');
+  // Rentrées
+  $('rentrees').innerHTML = (d.livret?.rentrees || []).map((r) => `<li><button data-rentree="${echapper(r.id)}"><span>${echapper(r.libelle)} <small>${nomMois(r.mois)}</small></span>
+    <b class="positif">+${fmt(r.montant)}</b></button></li>`).join('') || '<li class="vide">Aucune rentrée prévue.</li>';
+  // Projets
+  const admin = !!moi?.admin;
+  $('btn-nouveau-projet').hidden = !admin || !$('form-projet').hidden;
+  const tri = [...d.projets].sort((a, b) => (a.archive - b.archive) || a.debut.localeCompare(b.debut));
+  $('liste-projets').innerHTML = tri.map((p) => {
+    const sorties = sortiesProjet(p, moisCourant());
+    const plan = p.archive ? 'archivé' : sorties.length ? `à venir : ${sorties.map((e) => `${moisCourtNom(e.mois)} ${fmtCourt(e.montant)}`).join(' · ')}` : 'entièrement dépensé';
+    const ligne = barre(p.nom, p.depense, p.budget, `${periode(p)} · ${p.nombre} opération(s) · ${plan}${p.echeancier?.length ? ' · échéancier' : ''}`);
+    const action = admin ? `<button class="action" data-projet="${echapper(p.id)}">Modifier</button>` : '';
+    return ligne.replace(/^<li>/, `<li class="${p.archive ? 'archive' : ''}">`).replace(/<\/li>$/, `${action}</li>`);
+  }).join('') || '<li class="vide">Aucun projet.</li>';
+}
+
+// Solde du livret
 $('livret').addEventListener('click', async () => {
-  const actuel = donnees?.livret ? (donnees.livret.solde / 100).toFixed(2).replace('.', ',') : '';
+  const actuel = donnees?.livret?.solde != null ? (donnees.livret.solde / 100).toFixed(2).replace('.', ',') : '';
   const saisie = prompt('Solde actuel du livret projets (€) :', actuel);
   if (saisie === null || !saisie.trim()) return;
   const centimes = Math.round(Number(saisie.replace(/\s/g, '').replace(',', '.')) * 100);
   if (!Number.isFinite(centimes)) { alert('Montant invalide.'); return; }
-  try { await api('/api/livret', { method: 'PUT', body: JSON.stringify({ solde: centimes }) }); await charger({ garderHistorique: true }); }
+  try { await api('/api/livret', { method: 'PUT', body: JSON.stringify({ solde: centimes }) }); await charger({ garderHistorique: true }); dessinerPageProjets(); }
   catch (e) { alert(e.message); }
+});
+$('resume-livret').addEventListener('click', () => afficherPage('projets'));
+
+// Rentrées prévues
+async function enregistrerRentrees(modif) {
+  const rentrees = [...(donnees.livret?.rentrees || [])];
+  modif(rentrees);
+  try { await api('/api/livret', { method: 'PUT', body: JSON.stringify({ rentrees }) }); await charger({ garderHistorique: true }); dessinerPageProjets(); }
+  catch (e) { alert(e.message); }
+}
+$('btn-ajout-rentree').addEventListener('click', () => {
+  $('form-rentree').reset();
+  $('rentree-mois').value = moisCourant();
+  $('dlg-rentree').showModal();
+});
+$('dlg-rentree').addEventListener('close', () => {
+  if ($('dlg-rentree').returnValue !== 'ok') return;
+  const r = { id: crypto.randomUUID?.() || String(Date.now()), libelle: $('rentree-libelle').value.trim(), mois: $('rentree-mois').value, montant: enCentimesSaisis($('rentree-montant').value) };
+  enregistrerRentrees((l) => l.push(r));
+});
+$('rentrees').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-rentree]');
+  if (!b) return;
+  const r = donnees.livret.rentrees.find((x) => x.id === b.dataset.rentree);
+  if (r && confirm(`Supprimer la rentrée prévue « ${r.libelle} » (${fmt(r.montant)}, ${nomMois(r.mois)}) ?`)) enregistrerRentrees((l) => l.splice(l.indexOf(l.find((x) => x.id === r.id)), 1));
+});
+
+// Formulaire projet et échéancier
+function ligneEcheance(e = {}) {
+  return `<div class="ligne-echeance">
+    <input type="month" class="ech-mois" value="${echapper(e.mois || '')}" aria-label="Mois" required>
+    <input type="number" class="ech-montant" inputmode="decimal" min="0" step="1" value="${e.montant ? enEuros(e.montant) : ''}" placeholder="€" aria-label="Montant" required>
+    <input class="ech-libelle" maxlength="60" value="${echapper(e.libelle || '')}" placeholder="ex. Réservations" aria-label="Libellé">
+    <button type="button" class="action danger ech-suppr" aria-label="Retirer l’échéance">×</button></div>`;
+}
+function lireEcheancier() {
+  return [...document.querySelectorAll('.ligne-echeance')].map((l) => ({
+    mois: l.querySelector('.ech-mois').value, montant: enCentimesSaisis(l.querySelector('.ech-montant').value), libelle: l.querySelector('.ech-libelle').value.trim(),
+  })).filter((e) => e.mois && e.montant > 0);
+}
+function majResumeEcheancier() {
+  const budget = enCentimesSaisis($('projet-budget').value);
+  const ech = lireEcheancier();
+  const total = ech.reduce((t, e) => t + e.montant, 0);
+  $('echeancier-resume').textContent = !ech.length ? 'Pas d’échéancier : budget réparti à parts égales sur les mois du projet.'
+    : total === budget ? `Échéancier complet : ${fmt(total)} ✓`
+    : total < budget ? `Échéancier : ${fmt(total)} sur ${fmt(budget)}. Les ${fmt(budget - total)} non planifiés iront au dernier mois.`
+    : `Attention : l’échéancier (${fmt(total)}) dépasse le budget (${fmt(budget)}).`;
+}
+function ouvrirProjet(p) {
+  $('form-projet').hidden = false;
+  $('btn-nouveau-projet').hidden = true;
+  $('projet-id').value = p?.id || '';
+  $('projet-nom').value = p?.nom || '';
+  $('projet-budget').value = p ? enEuros(p.budget) : '';
+  $('projet-debut').value = p?.debut || moisCourant();
+  $('projet-fin').value = p?.fin || moisCourant();
+  $('projet-motif').value = p?.motif || '';
+  $('projet-archive').checked = !!p?.archive;
+  $('echeancier').innerHTML = (p?.echeancier || []).map(ligneEcheance).join('');
+  majResumeEcheancier();
+  $('btn-supprimer-projet').hidden = !p;
+  $('form-projet').scrollIntoView({ block: 'start' });
+}
+function fermerProjet() { $('form-projet').hidden = true; $('btn-nouveau-projet').hidden = !moi?.admin; }
+$('btn-nouveau-projet').addEventListener('click', () => ouvrirProjet(null));
+$('btn-annuler-projet').addEventListener('click', fermerProjet);
+$('liste-projets').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-projet]');
+  if (b) ouvrirProjet(donnees.projets.find((p) => p.id === b.dataset.projet));
+});
+$('btn-ajout-echeance').addEventListener('click', () => {
+  $('echeancier').insertAdjacentHTML('beforeend', ligneEcheance({ mois: $('projet-debut').value }));
+  majResumeEcheancier();
+});
+$('echeancier').addEventListener('click', (e) => { if (e.target.classList.contains('ech-suppr')) { e.target.closest('.ligne-echeance').remove(); majResumeEcheancier(); } });
+$('form-projet').addEventListener('input', majResumeEcheancier);
+$('form-projet').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const id = $('projet-id').value;
+  const corps = {
+    nom: $('projet-nom').value, budget: enCentimesSaisis($('projet-budget').value),
+    debut: $('projet-debut').value, fin: $('projet-fin').value, motif: $('projet-motif').value, archive: $('projet-archive').checked,
+    echeancier: lireEcheancier(),
+  };
+  try {
+    await api(id ? `/api/projets/${encodeURIComponent(id)}` : '/api/projets', { method: id ? 'PUT' : 'POST', body: JSON.stringify(corps) });
+    fermerProjet();
+    await charger();
+    dessinerPageProjets();
+  } catch (err) { alert(err.message); }
+});
+$('btn-supprimer-projet').addEventListener('click', async () => {
+  if (!confirm('Supprimer ce projet ? Ses opérations reviendront dans les budgets du mois.')) return;
+  await api(`/api/projets/${encodeURIComponent($('projet-id').value)}`, { method: 'DELETE' }).catch((e) => alert(e.message));
+  fermerProjet();
+  await charger();
+  dessinerPageProjets();
 });
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});

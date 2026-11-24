@@ -179,11 +179,23 @@ async function router(req, env) {
   }
 
   // Prévision : opérations récurrentes ignorées et opérations prévues ajoutées à la main. Toute la famille.
-  // Solde du livret projets, saisi à la main (les livrets ne sont pas transmis par la banque).
+  // Livret projets, saisi à la main (les livrets ne sont pas transmis par la banque) :
+  // solde et rentrées prévues (13e mois, prime…) par mois.
   if (p === '/api/livret' && req.method === 'PUT') {
-    const { solde } = await req.json();
-    if (!Number.isFinite(Number(solde))) return repondre({ erreur: 'Montant invalide.' }, 400);
-    await ecrireReglage(env, 'livret', { solde: Math.round(Number(solde)), date: maintenant().slice(0, 10) }).run();
+    const c = await req.json();
+    const ancien = (await lireReglage(env, 'livret')) || {};
+    const livret = { ...ancien };
+    if ('solde' in c) {
+      if (!Number.isFinite(Number(c.solde))) return repondre({ erreur: 'Montant invalide.' }, 400);
+      livret.solde = Math.round(Number(c.solde));
+      livret.date = maintenant().slice(0, 10);
+    }
+    if ('rentrees' in c) {
+      livret.rentrees = (c.rentrees || []).filter((r) => /^\d{4}-\d{2}$/.test(r?.mois || '') && Number(r.montant) > 0).slice(0, 60)
+        .map((r) => ({ id: String(r.id || crypto.randomUUID()).slice(0, 40), mois: r.mois, montant: Math.round(Number(r.montant)), libelle: String(r.libelle || 'Rentrée').slice(0, 60) }))
+        .sort((a, b) => a.mois.localeCompare(b.mois));
+    }
+    await ecrireReglage(env, 'livret', livret).run();
     return repondre({ ok: true });
   }
   if (p === '/api/prevision' && req.method === 'PUT') {
@@ -246,11 +258,15 @@ async function router(req, env) {
     const mois = (v) => (/^\d{4}-\d{2}$/.test(v || '') ? v : null);
     if (!String(pr.nom || '').trim() || !mois(pr.debut) || !mois(pr.fin)) return repondre({ erreur: 'Nom et période obligatoires.' }, 400);
     const motif = normaliser(pr.motif) || null;
-    await env.DB.prepare(`INSERT INTO projets (id, nom, budget, debut, fin, motif, archive, cree) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    // Échéancier facultatif : sorties prévues par mois (ex. réservations en mai, solde en août).
+    const echeancier = (Array.isArray(pr.echeancier) ? pr.echeancier : []).filter((e) => mois(e?.mois) && Number(e.montant) > 0).slice(0, 36)
+      .map((e) => ({ mois: e.mois, montant: Math.round(Number(e.montant)), libelle: String(e.libelle || '').slice(0, 60) }))
+      .sort((a, b) => a.mois.localeCompare(b.mois));
+    await env.DB.prepare(`INSERT INTO projets (id, nom, budget, debut, fin, motif, archive, echeancier, cree) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET nom = excluded.nom, budget = excluded.budget, debut = excluded.debut, fin = excluded.fin,
-        motif = excluded.motif, archive = excluded.archive`)
+        motif = excluded.motif, archive = excluded.archive, echeancier = excluded.echeancier`)
       .bind(id, String(pr.nom).trim().slice(0, 60), Math.max(0, Math.round(Number(pr.budget) || 0)), mois(pr.debut),
-        pr.fin < pr.debut ? mois(pr.debut) : mois(pr.fin), motif, pr.archive ? 1 : 0, maintenant()).run();
+        pr.fin < pr.debut ? mois(pr.debut) : mois(pr.fin), motif, pr.archive ? 1 : 0, echeancier.length ? JSON.stringify(echeancier) : null, maintenant()).run();
     await rattacherProjets(env);
     return repondre({ ok: true, id });
   }
@@ -435,7 +451,7 @@ async function etat(env, mois) {
     env.DB.prepare("SELECT valeur FROM reglages WHERE cle = 'synchro'"),
     env.DB.prepare('SELECT id, nom, type, budget FROM categories ORDER BY ordre'),
     env.DB.prepare('SELECT id, motif, categorie, note, montant, source FROM regles'),
-    env.DB.prepare(`SELECT p.id, p.nom, p.budget, p.debut, p.fin, p.motif, p.archive,
+    env.DB.prepare(`SELECT p.id, p.nom, p.budget, p.debut, p.fin, p.motif, p.archive, p.echeancier,
       COALESCE((SELECT -SUM(o.montant) FROM operations o WHERE o.projet = p.id), 0) AS depense,
       (SELECT COUNT(*) FROM operations o WHERE o.projet = p.id) AS nombre
       FROM projets p ORDER BY p.archive, p.debut`),
@@ -456,7 +472,7 @@ async function etat(env, mois) {
     synchro: synchro.results[0] ? JSON.parse(synchro.results[0].valeur) : null,
     categories: categories.results,
     regles: regles.results,
-    projets: projets.results.map((p) => ({ ...p, archive: !!p.archive })),
+    projets: projets.results.map((p) => ({ ...p, archive: !!p.archive, echeancier: p.echeancier ? JSON.parse(p.echeancier) : [] })),
     encours: encours.results,
     cartes: cartes.results.map((c) => c.carte).sort(),
     nomsCartes: nomsCartes.results[0] ? JSON.parse(nomsCartes.results[0].valeur) : {},

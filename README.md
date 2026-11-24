@@ -5,6 +5,7 @@ Budget récupère automatiquement les opérations de vos comptes bancaires (via 
 - **Aujourd’hui** : reste à dépenser du mois, anneaux des dépenses courantes (le trait noir marque le rythme attendu à cette date), charges fixes, projets, solde disponible une fois les cartes à débit différé déduites.
 - **Opérations** : liste du mois. Toucher une opération permet de la classer ; « toujours classer ainsi » crée une règle pour les suivantes.
 - **Recherche** (en haut de l’onglet Opérations) : texte libre (libellé, commentaire, montant) et/ou catégorie, sur les 12 derniers mois, avec le total.
+- **Projets** : solde du livret projets (saisi à la main), rentrées prévues (13e mois…), plan mois par mois du livret avec le premier mois où il manquerait de l’argent, et pour chaque projet un échéancier facultatif (réservations en mai, solde en août…). Sans échéancier, le reste est réparti à parts égales sur les mois du projet.
 - **Graphiques** : dépenses par mois face au budget, une catégorie dans le temps, répartition du mois, évolution du solde.
 - **Réglages** : budgets mensuels, projets (budget sur une période, rattachement automatique par motif), type de chaque compte (courant, carte à débit différé, épargne).
 

@@ -281,6 +281,7 @@ function dessiner() {
   dessinerOperations(d, calcul);
   $('section-prevision').hidden = d.mois !== moisCourant() || !d.comptes.length;
   if (!$('page-projets').hidden) dessinerPageProjets();
+  if (d.mois !== moisCourant()) majLigneAtterrissage();
   if (d.mois === moisCourant()) dessinerPrevision();
   if (!$('page-reglages').hidden) dessinerReglages();
 }
@@ -362,7 +363,7 @@ function dessinerAccueil(d, k) {
     : 'sur les comptes courants';
   const ordre = { courant: 0, carte: 0, epargne: 2 };
   const lignesCartes = Object.entries(k.encoursParCarte).filter(([, v]) => v).map(([carte, v]) =>
-    `<li><span class="nom">${echapper(nomCarte(d, carte))}<small>paiements à débiter (débit différé)</small></span>
+    `<li class="cliquable" data-carte-ops="${echapper(carte)}"><span class="nom">${echapper(nomCarte(d, carte))}<small>paiements à débiter (débit différé) ›</small></span>
       <span class="montant">−${fmt(v)}</span></li>`);
   $('comptes').innerHTML = visibles.length
     ? [...visibles].sort((a, b) => ordre[a.type] - ordre[b.type]).map((c) => {
@@ -507,22 +508,25 @@ function htmlOp(o, d, avecDate = false) {
 
 // ---- puces de filtre (catégorie, à classer, projet), communes au mois et à la recherche
 function passeFiltre(o) {
+  if (filtre === 'carte') return o.carte === filtreCat && o.statut === 'AVNR';
   if (filtre === 'aclasser') return !o.cat && !o.projet && !o.epargne;
   if (filtre === 'projet') return o.projet === filtreCat;
   if (filtre === 'categorie') return filtreCat === 'revenus' ? o.cat === 'revenus' && !o.projet : o.cat === filtreCat && !o.projet && !o.epargne;
   return true;
 }
 function nomFiltre(d) {
+  if (filtre === 'carte') return `${nomCarte(d, filtreCat)} · à débiter`;
   if (filtre === 'aclasser') return 'À classer';
   if (filtre === 'projet') return `Projet · ${d.projets.find((p) => p.id === filtreCat)?.nom || ''}`;
   return nomCategorie(d, filtreCat);
 }
-const cleFiltre = () => (filtre === 'toutes' ? '' : filtre === 'aclasser' ? 'a' : `${filtre === 'projet' ? 'p' : 'c'}:${filtreCat}`);
+const cleFiltre = () => (filtre === 'toutes' ? '' : filtre === 'aclasser' ? 'a' : `${{ projet: 'p', carte: 'k' }[filtre] || 'c'}:${filtreCat}`);
 function choisirFiltre(cle) {
   if (!cle) filtre = 'toutes';
   else if (cle === 'a') filtre = 'aclasser';
-  else { filtre = cle.startsWith('p:') ? 'projet' : 'categorie'; filtreCat = cle.slice(2); }
-  if ($('recherche').value.trim()) rechercher(); else dessiner();
+  else { filtre = { p: 'projet', k: 'carte' }[cle[0]] || 'categorie'; filtreCat = cle.slice(2); }
+  rechercher();
+  dessiner();
 }
 function dessinerPuces(d, k) {
   // Montant du mois sur chaque puce : on voit d'un coup d'œil où part l'argent.
@@ -535,6 +539,10 @@ function dessinerPuces(d, k) {
     puces.push([`c:${c.id}`, c.nom, v]);
   }
   for (const p of d.projets.filter((x) => !x.archive)) puces.push([`p:${p.id}`, `Projet · ${p.nom}`, null]);
+  // Cartes : paiements pas encore débités (sur plusieurs mois : recherche dans l'historique).
+  const parCarte = {};
+  for (const e of d.encours || []) if (e.carte) parCarte[e.carte] = (parCarte[e.carte] || 0) + e.montant;
+  for (const [c, v] of Object.entries(parCarte)) if (v) puces.push([`k:${c}`, `${nomCarte(d, c)} · à débiter`, v]);
   const actif = cleFiltre();
   $('puces-filtre').innerHTML = puces.map(([cle, nom, v]) => `<button data-cle="${echapper(cle)}" class="${cle === actif ? 'actif' : ''} ${cle === 'a' && k.aClasser ? 'alerte-puce' : ''}" aria-pressed="${cle === actif}">
     ${echapper(nom)}${v ? ` <small>${fmtCourt(Math.abs(v))}</small>` : ''}</button>`).join('');
@@ -923,7 +931,7 @@ function rafraichirVuesHistorique() {
 }
 
 // --- Recherche ---
-const rechercheActive = () => $('recherche').value.trim();
+const rechercheActive = () => $('recherche').value.trim() || filtre === 'carte';
 let minuterieRecherche = null;
 $('recherche').addEventListener('input', () => { clearTimeout(minuterieRecherche); minuterieRecherche = setTimeout(rechercher, 200); });
 
@@ -945,7 +953,7 @@ async function rechercher() {
   });
   const total = res.reduce((t, o) => t + o.montant, 0);
   $('resultats-resume').textContent = res.length
-    ? `${res.length} opération${res.length > 1 ? 's' : ''} sur 12 mois${filtre !== 'toutes' ? ` (${nomFiltre(d)})` : ''} · total ${fmtSigne(total)}`
+    ? `${res.length} opération${res.length > 1 ? 's' : ''}${filtre === 'carte' ? '' : ' sur 12 mois'}${filtre !== 'toutes' ? ` (${nomFiltre(d)})` : ''} · total ${fmtSigne(total)}`
     : 'Aucune opération ne correspond.';
   opsAffichees.clear();
   let html = '', moisCourantRes = null;
@@ -1014,6 +1022,7 @@ async function dessinerGraphiques() {
   const moisL = listeMois(historique.depuis);
   const s1 = couleur('--serie-1'), s2 = couleur('--serie-2'), s3 = couleur('--serie-3'), surface = couleur('--surface'), encre2 = couleur('--encre-2');
   const budgetMensuel = d.categories.filter((c) => c.type === 'fixe' || c.type === 'enveloppe').reduce((t, c) => t + c.budget, 0);
+  dessinerAtterrissages(moisL);
 
   // 1. Dépenses par mois : budget du mois / autres dépenses / projets
   const parMois = Object.fromEntries(moisL.map((m) => [m, { budget: 0, autres: 0, projets: 0 }]));
@@ -1163,6 +1172,7 @@ function detecterRecurrences(ops, d) {
     g.jours.push(Number(o.date_compta.slice(8, 10)));
     g.libelle = o.libelle;
     g.cat = o.projet ? null : o.cat;
+    g.projet = o.projet || null;
   }
   return Object.values(groupes)
     .filter((g) => Object.keys(g.mois).length >= 2 && (g.mois[prec[0]] || g.mois[prec[1]]))
@@ -1329,6 +1339,7 @@ async function dessinerPrevision() {
     options: o,
   });
   majCurseur();
+  majLigneAtterrissage();
   $('a-venir-titre').textContent = `À venir d’ici le ${Number(p.horizon.slice(8))} ${nomMois(p.horizon.slice(0, 7)).split(' ')[0]} (${p.evenements.length})`;
   $('a-venir').innerHTML = p.evenements.map((e, i) => `<li><button data-prevu="${i}">
       <span class="quand">${new Date(`${e.date}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</span>
@@ -1905,6 +1916,130 @@ $('guide-suiv').addEventListener('click', () => {
 $('dlg-guide').addEventListener('close', () => ecrire('guide-vu', true));
 $('btn-guide').addEventListener('click', ouvrirGuide);
 $('btn-guide-reglages').addEventListener('click', ouvrirGuide);
+
+// ---------- atterrissage du mois (résultat : revenus du mois − dépenses du mois) ----------
+// Les achats carte comptent le mois de l'achat ; l'épargne programmée compte comme une dépense ;
+// les projets (financés par le livret) et les virements internes sont à part.
+// Pour le mois en cours : pré-clôture, avec les rentrées et dépenses encore attendues.
+function atterrissage(m) {
+  const d = donnees;
+  const ops = opsHistorique().filter((o) => !o.epargne && !o.projet);
+  const types = Object.fromEntries(d.categories.map((c) => [c.id, c.type]));
+  const duMois = ops.filter((o) => o.date.startsWith(m));
+  const revenus = duMois.filter((o) => o.cat === 'revenus').reduce((t, o) => t + o.montant, 0);
+  const depenses = -duMois.filter((o) => o.cat !== 'revenus' && (!o.cat || types[o.cat] !== 'hors')).reduce((t, o) => t + o.montant, 0);
+
+  // Revenus exceptionnels : rentrées ponctuelles (≥ 300 €) ou surplus d'une rentrée habituelle (13e mois…).
+  const parCle = {};
+  for (const o of ops.filter((x) => x.cat === 'revenus' && x.montant > 0)) {
+    const k = cleRecurrence(o), mo = o.date.slice(0, 7);
+    ((parCle[k] ??= {})[mo] ??= 0);
+    parCle[k][mo] += o.montant;
+  }
+  let exceptionnel = 0;
+  for (const parMois of Object.values(parCle)) {
+    const v = parMois[m];
+    if (!v) continue;
+    const valeurs = Object.values(parMois);
+    if (valeurs.length <= 2) { if (v >= 30000) exceptionnel += v; continue; }
+    const surplus = v - mediane(valeurs);
+    if (surplus >= 30000) exceptionnel += surplus;
+  }
+
+  let revenusAttendus = 0, depensesAVenir = 0, fixesAVenir = 0, quotidienAVenir = 0;
+  const prevu = m === moisCourant();
+  if (prevu && prevision && calcul && donnees.mois === m) {
+    const auj = aujourdhui(), fin = `${m}-${String(joursDansMois(m)).padStart(2, '0')}`;
+    for (const e of prevision.evenements) {
+      if (e.carte || e.date <= auj || e.date > fin || e.recurrence?.projet) continue;
+      if (e.montant > 0) { if (!e.cat || e.cat === 'revenus') revenusAttendus += e.montant; continue; }
+      if (e.cat && (types[e.cat] === 'hors' || types[e.cat] === 'enveloppe')) continue;
+      fixesAVenir -= e.montant;
+    }
+    const proj = projeter(fin);
+    for (const c of proj.cats) {
+      if (c.type !== 'enveloppe') continue;
+      const actuel = calcul.cats.find((x) => x.id === c.id)?.depense || 0;
+      quotidienAVenir += Math.max(c.depense - actuel, 0);
+    }
+    depensesAVenir = fixesAVenir + quotidienAVenir;
+  }
+  const resultat = revenus + revenusAttendus - depenses - depensesAVenir;
+  return { mois: m, revenus, revenusAttendus, exceptionnel, depenses, depensesAVenir, fixesAVenir, quotidienAVenir, resultat, prevu };
+}
+
+const moisNom = (m) => nomMois(m).split(' ')[0];
+const deMois = (m) => (/^[aeiouyàâéèêîôû]/i.test(moisNom(m)) ? `d’${moisNom(m)}` : `de ${moisNom(m)}`);
+function texteAtterrissage(a) {
+  return `${a.prevu ? `Atterrissage ${deMois(a.mois)} prévu` : `Clôture ${deMois(a.mois)}`} : ${fmtSigne(a.resultat)}`;
+}
+
+let moisAtterrissage = null;
+function dessinerDetailAtterrissage(a) {
+  const ex = a.exceptionnel ? ` <small>dont ${fmt(a.exceptionnel)} exceptionnels</small>` : '';
+  $('atterrissage-detail').innerHTML = `
+    <div class="att-titre">${a.prevu ? `${nomMois(a.mois)} · pré-clôture` : `${nomMois(a.mois)} · clôture`}</div>
+    <div class="att-ligne"><span>Revenus du mois${ex}${a.revenusAttendus ? `<small>dont ${fmt(a.revenusAttendus)} encore attendus</small>` : ''}</span><b>${fmt(a.revenus + a.revenusAttendus)}</b></div>
+    <div class="att-ligne"><span>Dépenses du mois<small>épargne programmée comprise${a.depensesAVenir ? ` · dont ${fmt(a.depensesAVenir)} encore à venir (${[a.fixesAVenir ? `${fmt(a.fixesAVenir)} de prélèvements` : '', a.quotidienAVenir ? `${fmt(a.quotidienAVenir)} de quotidien au rythme habituel` : ''].filter(Boolean).join(', ')})` : ''}</small></span><b>−${fmt(a.depenses + a.depensesAVenir)}</b></div>
+    <div class="att-ligne att-total ${a.resultat < 0 ? 'negatif' : 'positif'}"><span>${a.resultat >= 0 ? 'Ce que le mois laisse' : 'Ce que le mois coûte'}</span><b>${fmtSigne(a.resultat)}</b></div>
+    ${a.exceptionnel ? `<div class="att-ligne att-hors"><span>Hors revenus exceptionnels</span><b class="${a.resultat - a.exceptionnel < 0 ? 'negatif' : ''}">${fmtSigne(a.resultat - a.exceptionnel)}</b></div>` : ''}`;
+}
+
+function dessinerAtterrissages(moisL) {
+  const liste = moisL.map(atterrissage).filter((a, i) => i > 0 || a.revenus || a.depenses);   // premier mois souvent incomplet
+  if (!moisAtterrissage || !liste.some((a) => a.mois === moisAtterrissage)) moisAtterrissage = liste[liste.length - 1]?.mois;
+  const choisi = liste.find((a) => a.mois === moisAtterrissage);
+  if (choisi) dessinerDetailAtterrissage(choisi);
+  const s1 = couleur('--serie-1'), s2 = couleur('--serie-2'), s3 = couleur('--serie-3');
+  $('legende-atterrissage').innerHTML = `<span><i style="background:${s1}"></i>Mois positif</span><span><i style="background:${s2}"></i>Mois négatif</span><span><i style="background:${s3}"></i>Revenus exceptionnels</span><span>* mois en cours, prévu</span>`;
+  const base = liste.map((a) => (a.resultat - Math.min(a.exceptionnel, Math.max(a.resultat, 0))) / 100);
+  const exc = liste.map((a) => Math.min(a.exceptionnel, Math.max(a.resultat, 0)) / 100);
+  graphique('g-atterrissage', {
+    type: 'bar',
+    data: {
+      labels: liste.map((a) => `${moisCourtNom(a.mois)}${a.prevu ? '*' : ''}`),
+      datasets: [
+        { label: 'Atterrissage', data: base, backgroundColor: liste.map((a, i) => (base[i] < 0 ? s2 : s1) + (a.prevu ? '99' : '')),
+          borderRadius: 4, borderSkipped: false, maxBarThickness: 22, stack: 's' },
+        { label: 'dont revenus exceptionnels', data: exc, backgroundColor: s3, borderRadius: 4, borderSkipped: 'bottom', maxBarThickness: 22, stack: 's' },
+      ],
+    },
+    options: (() => {
+      const o = optionsCommunes();
+      o.scales.x.stacked = true; o.scales.y.stacked = true;
+      o.scales.y.grid.color = (c) => (c.tick.value === 0 ? couleur('--encre-2') : couleur('--filet'));
+      o.plugins.tooltip.callbacks.title = (items) => texteAtterrissage(liste[items[0].dataIndex]);
+      o.onClick = (_e, el) => { if (!el.length) return; moisAtterrissage = liste[el[0].index].mois; dessinerDetailAtterrissage(liste[el[0].index]); };
+      return o;
+    })(),
+  });
+  tableau('t-atterrissage', ['Mois', 'Revenus', 'dont exceptionnels', 'Dépenses', 'Atterrissage'],
+    liste.map((a) => [`${nomMois(a.mois)}${a.prevu ? ' (prévu)' : ''}`, fmt(a.revenus + a.revenusAttendus), fmt(a.exceptionnel), fmt(a.depenses + a.depensesAVenir), fmtSigne(a.resultat)]));
+}
+
+// Ligne de conclusion en bas de l'accueil, pour le mois affiché.
+async function majLigneAtterrissage() {
+  const d = donnees;
+  if (!d?.comptes?.length) { $('ligne-atterrissage').hidden = true; return; }
+  try { await chargerHistorique(); } catch { return; }
+  if (d.mois === moisCourant() && !prevision) return;   // attend la prévision
+  const a = atterrissage(d.mois);
+  if (!a.revenus && !a.depenses) { $('ligne-atterrissage').hidden = true; return; }
+  $('ligne-atterrissage').hidden = false;
+  $('ligne-atterrissage').classList.toggle('negatif-bord', a.resultat < 0);
+  $('ligne-atterrissage').innerHTML = `<span>${texteAtterrissage(a).replace(/ : .*/, '')}</span>
+    <b class="${a.resultat < 0 ? 'negatif' : 'positif'}">${fmtSigne(a.resultat)}</b>
+    <small>${a.exceptionnel ? `dont ${fmt(a.exceptionnel)} de revenus exceptionnels · ` : ''}revenus − dépenses du mois, épargne comprise ›</small>`;
+}
+$('ligne-atterrissage').addEventListener('click', () => { moisAtterrissage = donnees.mois; afficherPage('graphiques'); });
+
+// Cartes de l'accueil : voir les paiements à débiter.
+$('comptes').addEventListener('click', (e) => {
+  const li = e.target.closest('[data-carte-ops]');
+  if (!li) return;
+  afficherPage('operations');
+  choisirFiltre(`k:${li.dataset.carteOps}`);
+});
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 demarrer();

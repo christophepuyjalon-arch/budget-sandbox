@@ -149,6 +149,8 @@
     </div>
     <ul id="comptes" class="comptes"></ul>
   </section>
+
+  <button id="ligne-atterrissage" class="ligne-atterrissage" hidden></button>
 </div>
 
 <!-- ===== Opérations ===== -->
@@ -229,6 +231,16 @@
 <div id="page-graphiques" class="page" hidden>
   <header class="entete"><h1>Graphiques</h1></header>
   <p id="graph-statut" class="statut"></p>
+
+  <section class="graphique" id="bloc-atterrissage">
+    <h2>Atterrissage du mois</h2>
+    <p class="discret-texte">Ce que chaque mois laisse (ou coûte) une fois tout payé : revenus du mois moins dépenses du mois, épargne programmée comprise, projets à part. Les achats carte comptent le mois où ils sont faits.</p>
+    <div id="atterrissage-detail" class="atterrissage-detail"></div>
+    <div class="legende" id="legende-atterrissage"></div>
+    <div class="cadre-graph"><canvas id="g-atterrissage" role="img" aria-label="Atterrissage de chaque mois sur 12 mois"></canvas></div>
+    <p class="discret-texte">Touche une barre pour voir le détail du mois.</p>
+    <details><summary>Voir les chiffres</summary><div id="t-atterrissage" class="table-defile"></div></details>
+  </section>
 
   <section class="graphique">
     <h2>Dépenses par mois</h2>

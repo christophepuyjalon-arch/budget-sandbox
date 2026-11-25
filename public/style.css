@@ -372,3 +372,23 @@ body.projection #section-projets, body.projection #section-suivi, body.projectio
 .guide-points { display: flex; justify-content: center; gap: 6px; margin: 8px 0 0; }
 .guide-points i { width: 8px; height: 8px; border-radius: 50%; background: var(--filet); }
 .guide-points i.actif { background: var(--accent); }
+
+/* Atterrissage */
+.atterrissage-detail { background: var(--fond); border-radius: 10px; padding: 10px 12px; margin: 6px 0 4px; display: grid; gap: 6px; }
+.att-titre { font-family: var(--titre); font-weight: 600; font-size: 17px; }
+.att-titre::first-letter { text-transform: uppercase; }
+.att-ligne { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.att-ligne span small { display: block; color: var(--encre-2); font-size: 13px; }
+.att-ligne b { font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 500; }
+.att-total { border-top: 1px solid var(--filet); padding-top: 6px; }
+.att-total b { font-family: var(--titre); font-weight: 600; font-size: 24px; }
+.att-total.positif b { color: var(--positif); } .att-total.negatif b { color: var(--alerte); }
+.att-total span { color: var(--encre); }
+.att-hors { font-size: 14px; color: var(--encre-2); }
+.ligne-atterrissage { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; width: 100%; text-align: left; margin: 22px 0 6px; padding: 12px; border-radius: 10px;
+  background: var(--surface); border: 0; border-left: 3px solid var(--positif); }
+.ligne-atterrissage span { font-family: var(--titre); font-weight: 600; font-size: 18px; }
+.ligne-atterrissage b { font-family: var(--titre); font-weight: 600; font-size: 22px; font-variant-numeric: tabular-nums; }
+.ligne-atterrissage small { grid-column: 1 / -1; color: var(--encre-2); font-size: 13px; }
+.ligne-atterrissage.negatif-bord { border-left-color: var(--alerte); }
+.comptes li.cliquable { cursor: pointer; }

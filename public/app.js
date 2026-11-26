@@ -1156,17 +1156,27 @@ const dateDuMois = (m, jour) => `${m}-${String(Math.min(jour, joursDansMois(m)))
 const lendemain = (iso) => { const j = new Date(`${iso}T12:00:00`); j.setDate(j.getDate() + 1); return isoLocal(j); };
 
 // Opérations qui reviennent au moins 2 des 3 derniers mois (hors cartes), avec leur jour et montant habituels.
+// Rythmes reconnus : chaque semaine, toutes les 2 semaines, toutes les 4 semaines, chaque mois.
+const RYTHMES = { hebdo: [7, 'chaque semaine'], quinzaine: [14, 'toutes les 2 semaines'], '4sem': [28, 'toutes les 4 semaines'], mensuel: [0, 'chaque mois'] };
+const nomRythme = (f) => RYTHMES[f || 'mensuel'][1];
+
+// Opérations récurrentes (hors cartes), avec leur rythme, leur montant et leur jour habituels.
+//   - rythme régulier (semaine, 2 semaines, 4 semaines) : déduit des écarts entre les opérations
+//     des 120 derniers jours (au moins 3 opérations) ;
+//   - sinon, mensuel : au moins 2 des 3 derniers mois.
 function detecterRecurrences(ops, d) {
   const m0 = moisCourant();
   const prec = [1, 2, 3].map((n) => decalerMois(m0, -n));
   const courants = new Set(d.comptes.filter((c) => !c.masque && c.type !== 'epargne').map((c) => c.id));
+  const depuis120 = plusJours(aujourdhui(), -120);
   const groupes = {};
   for (const o of ops) {
     if (!courants.has(o.compte) || o.carte || o.statut !== 'BOOK' || Math.abs(o.montant) < 500 || o.cat === 'differe') continue;
+    const k = cleRecurrence(o);
+    const g = (groupes[k] ??= { cle: k, libelle: o.libelle, mois: {}, jours: [], ceMois: 0, recentes: [] });
+    if (o.date_compta >= depuis120) g.recentes.push(o);
     const m = o.date_compta.slice(0, 7);
     if (m !== m0 && !prec.includes(m)) continue;
-    const k = cleRecurrence(o);
-    const g = (groupes[k] ??= { cle: k, libelle: o.libelle, mois: {}, jours: [], ceMois: 0 });
     if (m === m0) { g.ceMois += o.montant; continue; }
     g.mois[m] = (g.mois[m] || 0) + o.montant;
     g.jours.push(Number(o.date_compta.slice(8, 10)));
@@ -1174,9 +1184,36 @@ function detecterRecurrences(ops, d) {
     g.cat = o.projet ? null : o.cat;
     g.projet = o.projet || null;
   }
-  return Object.values(groupes)
-    .filter((g) => Object.keys(g.mois).length >= 2 && (g.mois[prec[0]] || g.mois[prec[1]]))
-    .map((g) => ({ ...g, montant: Math.round(mediane(Object.values(g.mois))), jour: Math.round(mediane(g.jours)) }));
+  const resultat = [];
+  for (const g of Object.values(groupes)) {
+    // 1. Rythme régulier ?
+    const r = [...g.recentes].sort((a, b) => a.date_compta.localeCompare(b.date_compta));
+    if (r.length >= 3) {
+      const ecarts = r.slice(1).map((o, i) => Math.round((Date.parse(o.date_compta) - Date.parse(r[i].date_compta)) / 86400000));
+      const med = mediane(ecarts);
+      const reguliers = ecarts.filter((e) => Math.abs(e - med) <= 2).length >= ecarts.length * 0.75;
+      const joursDuMois = r.map((o) => Number(o.date_compta.slice(8, 10)));
+      const derive = Math.max(...joursDuMois) - Math.min(...joursDuMois) > 3;   // le jour du mois glisse : pas mensuel
+      let frequence = null;
+      if (reguliers && med >= 6 && med <= 8) frequence = 'hebdo';
+      else if (reguliers && med >= 13 && med <= 15) frequence = 'quinzaine';
+      else if (reguliers && med >= 27 && med <= 29 && derive) frequence = '4sem';
+      if (frequence) {
+        const derniere = r[r.length - 1];
+        resultat.push({
+          ...g, frequence, periode: RYTHMES[frequence][0], derniere: derniere.date_compta,
+          montant: Math.round(mediane(r.slice(-4).map((o) => o.montant))), jour: Number(derniere.date_compta.slice(8, 10)),
+          libelle: derniere.libelle, cat: derniere.projet ? null : derniere.cat, projet: derniere.projet || null,
+        });
+        continue;
+      }
+    }
+    // 2. Sinon, mensuel.
+    if (Object.keys(g.mois).length >= 2 && (g.mois[prec[0]] || g.mois[prec[1]])) {
+      resultat.push({ ...g, frequence: 'mensuel', montant: Math.round(mediane(Object.values(g.mois))), jour: Math.round(mediane(g.jours)) });
+    }
+  }
+  return resultat;
 }
 
 // Solde de fin de journée, reconstitué à rebours depuis le solde actuel.
@@ -1222,13 +1259,32 @@ function calculerPrevision() {
     const tolerance = Math.max(100, Math.abs(p.montant) * 0.05);
     const ceMois = ops.filter((o) => courantsIds.has(o.compte) && !o.carte && (o.date_compta || o.date).startsWith(m0)
       && cleRecurrence(o) === p.base && Math.abs(o.montant - p.montant) <= tolerance).reduce((t, o) => t + o.montant, 0);
+    const frequence = p.frequence || 'mensuel';
+    // Pour un rythme régulier : la dernière opération correspondante donne le point de départ.
+    const derniere = ops.filter((o) => courantsIds.has(o.compte) && !o.carte && cleRecurrence(o) === p.base && Math.abs(o.montant - p.montant) <= tolerance)
+      .map((o) => o.date_compta || o.date).sort().pop() || p.depuis || auj;
     recurrences.push({ cle: `p:${p.id}`, libelle: p.libelle, montant: p.montant, jour: p.jour, ceMois, perso: p,
+      frequence, periode: RYTHMES[frequence][0], derniere,
       cat: categorieDe({ libelle: p.libelle, contrepartie: null, montant: p.montant, categorie: null }, d) });
   }
   for (const detecte of recurrences) {
     if (ignores.has(detecte.cle)) continue;
     const m = modifs[detecte.cle];
     const r = { ...detecte, ...(m || {}), detecte, modifie: !!m };
+    if (r.periode) {
+      // Rythme régulier : de période en période depuis la dernière opération.
+      // Une échéance déjà dépassée (pas encore passée en banque) est prévue pour demain.
+      for (let k = 1; k < 60; k++) {
+        const date = plusJours(r.derniere, r.periode * k);
+        if (date > horizon) break;
+        if (date <= auj) {
+          if (plusJours(date, r.periode) > auj) evenements.push({ date: lendemain(auj), libelle: r.libelle, montant: r.montant, cle: r.cle, retard: true, recurrence: r, cat: r.cat });
+          continue;
+        }
+        evenements.push({ date, libelle: r.libelle, montant: r.montant, cle: r.cle, recurrence: r, cat: r.cat });
+      }
+      continue;
+    }
     if (!r.ceMois) {
       let date = dateDuMois(m0, r.jour);
       const retard = date <= auj;
@@ -1343,7 +1399,7 @@ async function dessinerPrevision() {
   $('a-venir-titre').textContent = `À venir d’ici le ${Number(p.horizon.slice(8))} ${nomMois(p.horizon.slice(0, 7)).split(' ')[0]} (${p.evenements.length})`;
   $('a-venir').innerHTML = p.evenements.map((e, i) => `<li><button data-prevu="${i}">
       <span class="quand">${new Date(`${e.date}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</span>
-      <span class="quoi">${echapper(e.libelle)}${e.recurrence?.modifie ? ' <small>(modifiée)</small>' : ''}${e.retard ? ' <small>(habituellement plus tôt)</small>' : ''}</span>
+      <span class="quoi">${echapper(e.libelle)}${e.recurrence?.periode ? ` <small>(${nomRythme(e.recurrence.frequence)})</small>` : ''}${e.recurrence?.modifie ? ' <small>(modifiée)</small>' : ''}${e.retard ? ' <small>(habituellement plus tôt)</small>' : ''}</span>
       <b class="${e.montant > 0 ? 'positif' : ''}">${fmtSigne(e.montant)}</b></button></li>`).join('') || '<li class="vide">Rien de prévu.</li>';
 }
 
@@ -1369,7 +1425,11 @@ let recurrenceOuverte = null;
 function ouvrirRecurrence(r) {
   recurrenceOuverte = r;
   $('rec-libelle').textContent = r.libelle;
-  $('rec-habitude').textContent = `${r.perso ? 'Déclarée' : 'Détectée'} : ${fmtSigne(r.detecte.montant)} vers le ${r.detecte.jour} du mois${r.detecte.montant > 0 ? ' (rentrée d’argent)' : ''}.`;
+  $('rec-habitude').textContent = r.periode
+    ? `${r.perso ? 'Déclarée' : 'Détectée'} : ${fmtSigne(r.detecte.montant)} ${nomRythme(r.frequence)} (dernière le ${dateCourteJ(r.derniere)}).`
+    : `${r.perso ? 'Déclarée' : 'Détectée'} : ${fmtSigne(r.detecte.montant)} vers le ${r.detecte.jour} du mois${r.detecte.montant > 0 ? ' (rentrée d’argent)' : ''}.`;
+  $('rec-jour').closest('div').hidden = !!r.periode;
+  $('rec-jour').required = !r.periode;
   $('rec-montant').value = (Math.abs(r.montant) / 100).toFixed(2);
   $('rec-jour').value = r.jour;
   $('rec-retablir').hidden = !r.modifie;
@@ -1529,8 +1589,14 @@ function majFicheRecurrente() {
   if (!possible) return;
   const r = recurrentePersoDe(o);
   const jour = Number(o.date.slice(8, 10));
-  $('btn-fiche-recurrente').textContent = r ? 'Ne plus prévoir chaque mois' : `Prévoir chaque mois, le ${jour}`;
-  $('fiche-recurrente-etat').textContent = r ? `Prévue le ${r.jour} de chaque mois (${fmtSigne(r.montant)}). Modifiable depuis la prévision.` : '';
+  $('fiche-frequence').hidden = !!r;
+  if (!r) $('fiche-frequence').value = 'mensuel';
+  const libelleBouton = () => ($('fiche-frequence').value === 'mensuel' ? `Prévoir chaque mois, le ${jour}` : `Prévoir ${nomRythme($('fiche-frequence').value)}`);
+  $('btn-fiche-recurrente').textContent = r ? 'Ne plus prévoir' : libelleBouton();
+  $('fiche-frequence').onchange = () => { $('btn-fiche-recurrente').textContent = libelleBouton(); };
+  $('fiche-recurrente-etat').textContent = !r ? ''
+    : (r.frequence || 'mensuel') === 'mensuel' ? `Prévue le ${r.jour} de chaque mois (${fmtSigne(r.montant)}). Modifiable depuis la prévision.`
+    : `Prévue ${nomRythme(r.frequence)} (${fmtSigne(r.montant)}). Modifiable depuis la prévision.`;
 }
 $('btn-fiche-recurrente').addEventListener('click', async () => {
   const o = ficheOp;
@@ -1538,7 +1604,8 @@ $('btn-fiche-recurrente').addEventListener('click', async () => {
   const r = recurrentePersoDe(o);
   await enregistrerPrevision((pr) => {
     if (r) pr.recurrentes = pr.recurrentes.filter((x) => x.id !== r.id);
-    else pr.recurrentes.push({ id: crypto.randomUUID?.() || String(Date.now()), base: cleRecurrence(o), libelle: o.libelle, montant: o.montant, jour: Number(o.date.slice(8, 10)) });
+    else pr.recurrentes.push({ id: crypto.randomUUID?.() || String(Date.now()), base: cleRecurrence(o), libelle: o.libelle, montant: o.montant,
+      jour: Number(o.date.slice(8, 10)), frequence: $('fiche-frequence').value, depuis: o.date });
   });
   majFicheRecurrente();
 });

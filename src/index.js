@@ -212,7 +212,9 @@ async function router(req, env) {
     // Opérations déclarées récurrentes depuis la liste : base = clé du libellé, montant signé, jour du mois.
     const recurrentes = (c.recurrentes || []).slice(0, 100).filter((r) => r.base && Number.isFinite(Number(r.montant)) && Number(r.jour) >= 1 && Number(r.jour) <= 31)
       .map((r) => ({ id: String(r.id || crypto.randomUUID()).slice(0, 40), base: String(r.base).slice(0, 80), libelle: String(r.libelle || '').slice(0, 80),
-        montant: Math.round(Number(r.montant)), jour: Math.round(Number(r.jour)) }));
+        montant: Math.round(Number(r.montant)), jour: Math.round(Number(r.jour)),
+        frequence: ['hebdo', 'quinzaine', '4sem'].includes(r.frequence) ? r.frequence : 'mensuel',
+        depuis: /^\d{4}-\d{2}-\d{2}$/.test(r.depuis || '') ? r.depuis : null }));
     await ecrireReglage(env, 'prevision', { ignores, ajouts, modifs, recurrentes }).run();
     return repondre({ ok: true });
   }

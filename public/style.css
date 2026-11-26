@@ -392,3 +392,6 @@ body.projection #section-projets, body.projection #section-suivi, body.projectio
 .ligne-atterrissage small { grid-column: 1 / -1; color: var(--encre-2); font-size: 13px; }
 .ligne-atterrissage.negatif-bord { border-left-color: var(--alerte); }
 .comptes li.cliquable { cursor: pointer; }
+.fiche-prevision select { margin-bottom: 8px; }
+.onglets { z-index: 20; }
+.fiche, dialog { z-index: 30; }

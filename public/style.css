@@ -395,3 +395,13 @@ body.projection #section-projets, body.projection #section-suivi, body.projectio
 .fiche-prevision select { margin-bottom: 8px; }
 .onglets { z-index: 20; }
 .fiche, dialog { z-index: 30; }
+
+/* Anneau au-delà de 100 % : second tour plus foncé, tête cerclée */
+.anneau.depasse .rempli.sous-tour { stroke: var(--alerte); opacity: .4; }
+.anneau .tour { fill: none; stroke: var(--alerte); stroke-width: 9; stroke-linecap: round; }
+.anneau .tour3 { stroke: color-mix(in srgb, var(--alerte) 70%, black); }
+.anneau .tete { fill: var(--alerte); stroke: var(--surface); stroke-width: 2; }
+
+/* Catégorie filtrée : à venir ce mois-ci */
+.a-venir-cat .a-venir-bilan { margin: 6px 0 4px; font-size: 15px; }
+.a-venir-cat .a-venir-bilan b { font-variant-numeric: tabular-nums; }

@@ -377,6 +377,15 @@ function dessinerAccueil(d, k) {
 function svgAnneau(part, repere) {
   const r = 30, c = 2 * Math.PI * r;
   const p = Math.min(Math.max(part, 0), 1);
+  // Au-delà de 100 % : un second tour, plus foncé, se superpose au premier (jusqu'à 200 %),
+  // avec une « tête » cerclée pour qu'on voie où il s'arrête. Au-delà de 200 %, un 3e tour.
+  const tours = [];
+  for (let t = 1; t < 3 && part > t; t++) {
+    const q = Math.min(part - t, 1);
+    const a = q * 2 * Math.PI - Math.PI / 2;
+    tours.push(`<circle class="tour tour${t + 1}" cx="36" cy="36" r="${r}" stroke-dasharray="${(q * c).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 36 36)"/>
+      <circle class="tete" cx="${(36 + r * Math.cos(a)).toFixed(1)}" cy="${(36 + r * Math.sin(a)).toFixed(1)}" r="4.5"/>`);
+  }
   let marque = '';
   if (repere != null) {
     const a = repere * 2 * Math.PI - Math.PI / 2;
@@ -384,7 +393,7 @@ function svgAnneau(part, repere) {
     marque = `<line class="repere" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`;
   }
   return `<svg viewBox="0 0 72 72" aria-hidden="true"><circle class="piste" cx="36" cy="36" r="${r}"/>
-    <circle class="rempli" cx="36" cy="36" r="${r}" stroke-dasharray="${(p * c).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 36 36)"/>${marque}</svg>`;
+    <circle class="rempli ${tours.length ? 'sous-tour' : ''}" cx="36" cy="36" r="${r}" stroke-dasharray="${(p * c).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 36 36)"/>${tours.join('')}${marque}</svg>`;
 }
 
 function barre(nom, depense, budget, detail, cat) {
@@ -480,7 +489,7 @@ function dessinerOperations(d, k) {
   $('ecart').textContent = fmtSigne(entrees + sorties);
   $('ecart').className = entrees + sorties < 0 ? 'negatif' : 'positif';
 
-  let html = titreFiltre, jourCourant = null;
+  let html = titreFiltre + aVenirCategorie(d), jourCourant = null;
   opsAffichees.clear();
   for (const o of liste) {
     if (o.date !== jourCourant) { jourCourant = o.date; html += `<h3 class="jour">${nomJour(o.date)}</h3>`; }
@@ -2106,6 +2115,34 @@ $('comptes').addEventListener('click', (e) => {
   if (!li) return;
   afficherPage('operations');
   choisirFiltre(`k:${li.dataset.carteOps}`);
+});
+
+// Opérations prévues d'ici la fin du mois pour la catégorie filtrée (mois en cours).
+let aVenirAffiches = [];
+function aVenirCategorie(d) {
+  aVenirAffiches = [];
+  if (filtre !== 'categorie' || d.mois !== moisCourant() || !prevision) return '';
+  const auj = aujourdhui(), fin = `${d.mois}-${String(joursDansMois(d.mois)).padStart(2, '0')}`;
+  aVenirAffiches = prevision.evenements.filter((e) => e.cat === filtreCat && !e.carte && e.date > auj && e.date <= fin);
+  if (!aVenirAffiches.length) return '';
+  const cat = d.categories.find((c) => c.id === filtreCat);
+  const passe = calcul?.cats.find((c) => c.id === filtreCat)?.depense || 0;
+  const prevu = passe - aVenirAffiches.reduce((t, e) => t + e.montant, 0);
+  const lignes = aVenirAffiches.map((e, i) => `<li><button data-a-venir="${i}">
+      <span class="quand">${dateCourteJ(e.date)}</span>
+      <span class="quoi">${echapper(e.libelle)}${e.recurrence?.periode ? ` <small>(${nomRythme(e.recurrence.frequence)})</small>` : ''}</span>
+      <b class="${e.montant > 0 ? 'positif' : ''}">${fmtSigne(e.montant)}</b></button></li>`).join('');
+  const bilan = cat?.budget
+    ? `Prévu en fin de mois : <b class="${prevu > cat.budget ? 'negatif' : ''}">${fmt(prevu)}</b> / ${fmt(cat.budget)}${prevu > cat.budget ? ' : budget trop juste' : ''}`
+    : `Prévu en fin de mois : <b>${fmt(prevu)}</b>`;
+  return `<div class="a-venir-cat"><h3 class="jour">À venir ce mois-ci</h3><ul class="lignes a-venir-liste">${lignes}</ul><p class="a-venir-bilan">${bilan}</p>
+    <h3 class="jour">Déjà passé</h3></div>`;
+}
+$('operations').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-a-venir]');
+  if (!b) return;
+  const ev = aVenirAffiches[b.dataset.aVenir];
+  if (ev?.recurrence) ouvrirRecurrence(ev.recurrence);
 });
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});

@@ -228,6 +228,14 @@ async function router(req, env) {
   if (!moi.admin) return repondre({ erreur: 'Réservé à l’administrateur.' }, 403);
 
   if (p === '/callback') return retourBanque(req, env, url);
+  // Trésorerie : coussin de sécurité et découvert autorisé (en centimes).
+  if (p === '/api/tresorerie' && req.method === 'PUT') {
+    const c = await req.json();
+    const coussin = Math.round(Number(c.coussin) || 0);
+    const decouvert = c.decouvert == null || c.decouvert === '' ? null : Math.max(0, Math.round(Number(c.decouvert) || 0));
+    await ecrireReglage(env, 'tresorerie', { coussin, decouvert }).run();
+    return repondre({ ok: true });
+  }
   if (p === '/api/categories' && req.method === 'PUT') {
     const { categories } = await req.json();
     const TYPES = ['fixe', 'enveloppe', 'suivi', 'hors'];
@@ -439,7 +447,7 @@ export async function synchroniser(env, psu, seulementConnexion = null) {
 async function etat(env, mois) {
   if (!/^\d{4}-\d{2}$/.test(mois || '')) mois = maintenant().slice(0, 7);
   const [debut, fin] = [`${mois}-01`, `${mois}-31`];
-  const [comptes, connexions, operations, bornes, synchro, categories, regles, projets, encours, cartes, nomsCartes, prevision, livret] = await env.DB.batch([
+  const [comptes, connexions, operations, bornes, synchro, categories, regles, projets, encours, cartes, nomsCartes, prevision, livret, tresorerie] = await env.DB.batch([
     env.DB.prepare(`SELECT c.id, c.nom, c.iban, c.devise, c.solde, c.solde_type, c.solde_date, c.synchro, c.masque, c.connexion, c.type, c.jour_debit, x.banque
       FROM comptes c JOIN connexions x ON x.id = c.connexion ORDER BY x.banque, c.nom`),
     env.DB.prepare('SELECT id, banque, pays, expire, cree, statut, erreur FROM connexions ORDER BY cree'),
@@ -464,6 +472,7 @@ async function etat(env, mois) {
     env.DB.prepare("SELECT valeur FROM reglages WHERE cle = 'cartes'"),
     env.DB.prepare("SELECT valeur FROM reglages WHERE cle = 'prevision'"),
     env.DB.prepare("SELECT valeur FROM reglages WHERE cle = 'livret'"),
+    env.DB.prepare("SELECT valeur FROM reglages WHERE cle = 'tresorerie'"),
   ]);
   return {
     mois,
@@ -480,5 +489,6 @@ async function etat(env, mois) {
     nomsCartes: nomsCartes.results[0] ? JSON.parse(nomsCartes.results[0].valeur) : {},
     prevision: prevision.results[0] ? JSON.parse(prevision.results[0].valeur) : { ignores: [], ajouts: [] },
     livret: livret.results[0] ? JSON.parse(livret.results[0].valeur) : null,
+    tresorerie: tresorerie.results[0] ? JSON.parse(tresorerie.results[0].valeur) : { coussin: 0, decouvert: null },
   };
 }

@@ -246,7 +246,7 @@ function afficherApp() {
   $('installer').hidden = true;
   $('app').hidden = false;
   $('moi-nom').textContent = moi ? `Activé au nom de ${moi.nom}${moi.admin ? ' (administrateur)' : ''}.` : '';
-  for (const id of ['bloc-banque', 'bloc-famille', 'bloc-budgets', 'bloc-comptes']) $(id).hidden = !moi?.admin;
+  for (const id of ['bloc-banque', 'bloc-famille', 'bloc-budgets', 'bloc-comptes', 'bloc-tresorerie']) $(id).hidden = !moi?.admin;
   const cache = lire(`etat:${mois}`);
   if (cache?.categories) { donnees = cache; dessiner(); }
   charger();
@@ -672,6 +672,7 @@ async function dessinerReglages() {
 
   if (!moi?.admin) return;
   if (!$('liste-categories').dataset.modifie) dessinerCategories(d);
+  dessinerReglagesTresorerie();
 
   // Comptes
   $('liste-comptes').innerHTML = d.comptes.map((c) => `<li class="compte-reglage" data-compte="${echapper(c.id)}"><div>
@@ -1032,6 +1033,7 @@ async function dessinerGraphiques() {
   const s1 = couleur('--serie-1'), s2 = couleur('--serie-2'), s3 = couleur('--serie-3'), surface = couleur('--surface'), encre2 = couleur('--encre-2');
   const budgetMensuel = d.categories.filter((c) => c.type === 'fixe' || c.type === 'enveloppe').reduce((t, c) => t + c.budget, 0);
   dessinerAtterrissages(moisL);
+  dessinerCreux(moisL);
 
   // 1. Dépenses par mois : budget du mois / autres dépenses / projets
   const parMois = Object.fromEntries(moisL.map((m) => [m, { budget: 0, autres: 0, projets: 0 }]));
@@ -1383,6 +1385,7 @@ async function dessinerPrevision() {
   $('prev-bas').textContent = fmt(p.bas.solde);
   $('prev-bas').classList.toggle('negatif', p.bas.solde < 0);
   $('prev-bas-date').textContent = `le ${new Date(`${p.bas.date}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}`;
+  majTresorerie(p);
   const labels = [...p.reel.map(([j]) => j), ...p.prevu.slice(1).map(([j]) => j)];
   const nReel = p.reel.length;
   const s1 = couleur('--serie-1');
@@ -2143,6 +2146,100 @@ $('operations').addEventListener('click', (e) => {
   if (!b) return;
   const ev = aVenirAffiches[b.dataset.aVenir];
   if (ev?.recurrence) ouvrirRecurrence(ev.recurrence);
+});
+
+// ---------- niveau de trésorerie ----------
+// Compare la prévision du compte joint au coussin de sécurité et au découvert autorisé,
+// et dit quoi faire : combien il faudrait, et avant quand.
+// decouvert : null tant qu'il n'est pas réglé (on ne sait pas), 0 = aucun découvert autorisé.
+const seuils = () => ({ coussin: donnees?.tresorerie?.coussin || 0, decouvert: donnees?.tresorerie?.decouvert ?? null });
+function majTresorerie(p) {
+  const { coussin, decouvert } = seuils();
+  const serie = p.prevu;
+  const bas = p.bas.solde;
+  const quand = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+  const sousZero = serie.filter(([, s]) => s < 0).length;
+  const nomCoussin = coussin ? `ton coussin de ${fmt(coussin)}` : 'zéro';
+  let niveau, texte;
+  if (decouvert != null && bas < -decouvert) {
+    const j = serie.find(([, s]) => s < -decouvert)[0];
+    niveau = 'rouge';
+    texte = decouvert
+      ? `<b>Au-delà du découvert autorisé</b> à partir du ${quand(j)} (jusqu’à ${fmt(bas)} le ${quand(p.bas.date)}). `
+        + `Il faudra <b>${fmt(-decouvert - bas)}</b> sur le compte avant le ${quand(j)} pour rester dans l’autorisation de ${fmt(decouvert)}.`
+      : `<b>Sous zéro sans découvert autorisé</b> à partir du ${quand(j)} (jusqu’à ${fmt(bas)}). Il faudra <b>${fmt(-bas)}</b> sur le compte avant le ${quand(j)}.`;
+  } else if (bas < coussin) {
+    const j = serie.find(([, s]) => s < coussin)[0];
+    niveau = bas < 0 ? 'orange' : 'jaune';
+    texte = `<b>Sous ${nomCoussin}</b> à partir du ${quand(j)}${decouvert && bas < 0 ? `, dans le découvert autorisé (${fmt(decouvert)})` : ''}`
+      + `${sousZero ? ` : ${sousZero} jour${sousZero > 1 ? 's' : ''} sous zéro prévus` : ''}. `
+      + `Pour l’éviter : <b>${fmt(coussin - bas)}</b> avant le ${quand(j)}.`;
+  } else {
+    niveau = 'vert';
+    texte = `<b>Trésorerie OK</b> jusqu’au ${quand(p.horizon)} : au plus bas ${fmt(bas - coussin)} au-dessus de ${nomCoussin}.`;
+  }
+  $('tresorerie').hidden = false;
+  $('tresorerie').className = `tresorerie niveau-${niveau}`;
+  $('tresorerie').innerHTML = texte;
+  $('prev-bas').classList.toggle('negatif', bas < coussin);
+}
+
+// Creux de chaque mois : solde le plus bas atteint, et jours sous zéro.
+function dessinerCreux(moisL) {
+  const d = donnees;
+  if (!d.comptes?.length) return;
+  const { coussin, decouvert } = seuils();
+  const jours = soldesPasses(`${moisL[0]}-01`);
+  // Seulement à partir du premier mois qui a des opérations (avant, le solde reconstitué n'a pas de sens).
+  const premier = historique.operations.reduce((min, o) => (o.date_compta < min ? o.date_compta : min), '9999').slice(0, 7);
+  const lignes = moisL.filter((m) => m >= premier).map((m) => {
+    const duMois = jours.filter(([j]) => j.startsWith(m));
+    if (!duMois.length) return null;
+    const min = duMois.reduce((a, b) => (b[1] < a[1] ? b : a));
+    return { mois: m, min: min[1], date: min[0], sousZero: duMois.filter(([, s]) => s < 0).length, encours: m === moisCourant() };
+  }).filter(Boolean);
+  const s1 = couleur('--serie-1'), s2 = couleur('--serie-2'), encre2 = couleur('--encre-2');
+  $('legende-creux').innerHTML = `<span><i style="background:${s1}"></i>Au-dessus de ${coussin ? 'ton coussin' : 'zéro'}</span>`
+    + `<span><i style="background:${s2}"></i>En dessous</span>${decouvert ? '<span><i class="trait"></i>Découvert autorisé</span>' : ''}`;
+  if (!lignes.length) return;
+  graphique('g-creux', {
+    type: 'bar',
+    data: {
+      labels: lignes.map((l) => `${moisCourtNom(l.mois)}${l.encours ? '*' : ''}`),
+      datasets: [
+        { label: 'Solde le plus bas', data: lignes.map((l) => l.min / 100), backgroundColor: lignes.map((l) => (l.min < coussin ? s2 : s1)),
+          borderRadius: 4, borderSkipped: false, maxBarThickness: 22 },
+        ...(decouvert ? [{ type: 'line', label: 'Découvert autorisé', data: lignes.map(() => -decouvert / 100), borderColor: encre2, borderWidth: 1.5,
+          borderDash: [5, 4], pointRadius: 0, pointHitRadius: 0 }] : []),
+      ],
+    },
+    options: (() => {
+      const o = optionsCommunes();
+      o.scales.y.grid.color = (c) => (c.tick.value === 0 ? couleur('--encre-2') : couleur('--filet'));
+      o.plugins.tooltip.callbacks.afterBody = (items) => {
+        const l = lignes[items[0].dataIndex];
+        return l ? `le ${dateCourteJ(l.date)} · ${l.sousZero} jour(s) sous zéro` : '';
+      };
+      return o;
+    })(),
+  });
+  tableau('t-creux', ['Mois', 'Solde le plus bas', 'Le', 'Jours sous zéro'],
+    lignes.map((l) => [`${nomMois(l.mois)}${l.encours ? ' (en cours)' : ''}`, fmt(l.min), dateCourteJ(l.date), String(l.sousZero)]));
+}
+
+// Réglages : coussin et découvert autorisé
+function dessinerReglagesTresorerie() {
+  const { coussin, decouvert } = seuils();
+  $('treso-coussin').value = Math.round(coussin / 100);
+  $('treso-decouvert').value = decouvert == null ? '' : Math.round(decouvert / 100);
+}
+$('btn-treso').addEventListener('click', async () => {
+  try {
+    await api('/api/tresorerie', { method: 'PUT', body: JSON.stringify({ coussin: enCentimesSaisis($('treso-coussin').value),
+      decouvert: $('treso-decouvert').value === '' ? null : enCentimesSaisis($('treso-decouvert').value) }) });
+    await charger({ garderHistorique: true });
+    statut('Trésorerie enregistrée ✓');
+  } catch (e) { alert(e.message); }
 });
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});

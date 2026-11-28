@@ -111,6 +111,7 @@
       <div><span class="etiquette" id="prev-fin-titre">Fin du mois</span><b id="prev-fin">–</b></div>
       <div><span class="etiquette">Point bas</span><b id="prev-bas">–</b><small id="prev-bas-date"></small></div>
     </div>
+    <p id="tresorerie" class="tresorerie" hidden></p>
     <div class="cadre-graph petit"><canvas id="g-prevision" role="img" aria-label="Solde réel puis prévu"></canvas></div>
     <p class="legende"><span><i class="ligne-pleine"></i>Solde réel</span><span><i class="ligne-tirets"></i>Prévu</span></p>
     <details class="a-venir" id="a-venir-bloc">
@@ -243,6 +244,14 @@
   </section>
 
   <section class="graphique">
+    <h2>Creux de trésorerie</h2>
+    <p class="discret-texte">Le solde le plus bas atteint chaque mois sur le compte joint (en général juste après le prélèvement des cartes). S’ils descendent de mois en mois, le budget ne tient pas sur la durée.</p>
+    <div class="legende" id="legende-creux"></div>
+    <div class="cadre-graph"><canvas id="g-creux" role="img" aria-label="Solde le plus bas de chaque mois"></canvas></div>
+    <details><summary>Voir les chiffres</summary><div id="t-creux" class="table-defile"></div></details>
+  </section>
+
+  <section class="graphique">
     <h2>Dépenses par mois</h2>
     <p class="discret-texte">Le trait pointillé marque le budget mensuel (charges fixes + dépenses courantes).</p>
     <div class="legende" id="legende-mois"></div>
@@ -282,6 +291,17 @@
     <div id="total-budget" class="total-budget" aria-live="polite"></div>
     <button id="btn-ajout-categorie" class="secondaire">Ajouter une catégorie</button>
     <button id="btn-enregistrer-categories" class="principal">Enregistrer les budgets</button>
+  </section>
+
+  <section class="bloc" id="bloc-tresorerie" hidden>
+    <h2>Trésorerie</h2>
+    <p class="discret-texte">Le niveau de trésorerie (écran Aujourd’hui) compare le solde prévu du compte joint à ces deux seuils.</p>
+    <div class="deux">
+      <div><label for="treso-coussin">Coussin de sécurité (€)</label><input id="treso-coussin" type="number" inputmode="decimal" step="50"></div>
+      <div><label for="treso-decouvert">Découvert autorisé (€)</label><input id="treso-decouvert" type="number" inputmode="decimal" min="0" step="100"></div>
+    </div>
+    <p class="discret-texte">Coussin : le solde minimum que tu veux garder (0 pour commencer, puis plus si tu progresses).</p>
+    <button id="btn-treso" class="principal">Enregistrer</button>
   </section>
 
   <section class="bloc" id="bloc-comptes" hidden>
